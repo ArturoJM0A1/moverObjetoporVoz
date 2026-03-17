@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Realidad Virtual y Reconocimiento de Voz</title>
+    <!-- Se carga la biblioteca A-Frame desde la web. -->
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <!-- Se carga el adaptador para la API de reconocimiento de voz desde la web. -->
+    <script src="https://rawgit.com/mozilla/web-speech-api/master/adapter.js"></script>
+    <!-- Se define un componente personalizado llamado "voice-command" -->
+    <script>
+        AFRAME.registerComponent('voice-command', {
+            // La función init se ejecuta cuando se agrega el componente a un elemento.
+            init: function () {
+                // Verificar si el reconocimiento de voz ya está en marcha
+                if (this.speechRecognition) {
+                    return;
+                }
+
+                // Obtener el elemento al que se agrega el componente.
+                var el = this.el;
+
+                // Crear una nueva instancia de reconocimiento de voz.
+                var speechRecognition = this.speechRecognition = new webkitSpeechRecognition();
+
+                // Configurar el reconocimiento de voz para que sea continuo y devuelva resultados provisionales.
+                speechRecognition.continuous = true;
+                speechRecognition.interimResults = true;
+
+                // Establecer el idioma de reconocimiento en español.
+                speechRecognition.lang = 'es-ES';
+
+                // Definir un objeto que asocie comandos de voz con acciones.
+                var commands = {
+                    'izquierda': function () {
+                        el.object3D.position.x -= 1;
+                    },
+                    'derecha': function () {
+                        el.object3D.position.x += 1;
+                    },
+                    'arriba': function () {
+                        el.object3D.position.y += 1;
+                    },
+                    'abajo': function () {
+                        el.object3D.position.y -= 1;
+                    },
+                    'adelante': function () {
+                        el.object3D.position.z -= 1;
+                    },
+                    'atrás': function () {
+                        el.object3D.position.z += 1;
+                    },
+                    'azul': function () {
+                        el.setAttribute('material', 'color', 'blue');
+                    },
+                    'verde': function () {
+                        el.setAttribute('material', 'color', 'green');
+                    }
+                };
+
+                // Configurar el reconocimiento de voz para que llame a la función onresult cuando haya resultados disponibles.
+                speechRecognition.onresult = function (event) {
+                    var text = '';
+                    for (var i = event.resultIndex; i < event.results.length; ++i) {
+                        text = event.results[i][0].transcript.toLowerCase();
+                    }
+
+                    console.log('Text:', text);
+
+                    // Comprobar si el texto del resultado incluye uno de los comandos definidos.
+                    for (var command in commands) {
+                        if (text.includes(command)) {
+                            // Ejecutar la acción asociada con el comando.
+                            commands[command]();
+                        }
+                    }
+                };
+
+                // Iniciar el reconocimiento de voz.
+                speechRecognition.start();
+            },
+
+            // La función remove se ejecuta cuando se elimina el componente de un elemento.
+            remove: function () {
+                var speechRecognition = this.speechRecognition;
+                if (speechRecognition) {
+                    // Detener el reconocimiento de voz.
+                    speechRecognition.stop();
+                }
+            }
+        });
+    </script>
+</head>
+
+
+<body>
+    <!-- Se define la escena de A-Frame -->
+    <a-scene>
+        <!-- Se agrega un cubo con el componente "voice-command" y un material rojo -->
+        <a-box voice-command material="color: red;"></a-box>
+        <!-- Se agrega una entidad de cámara -->
+        <a-entity camera class="xd" position="0 0 9"></a-entity>
+    </a-scene>
+</body>
+
+</html>
