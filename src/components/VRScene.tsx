@@ -133,6 +133,11 @@ export default function VRScene() {
     gameStatusRef.current = gameStatus;
   }, [gameStatus]);
 
+  // Log cada vez que cambian las vidas
+  useEffect(() => {
+    console.log("[LIVES STATE] actualizado a", lives);
+  }, [lives]);
+
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [stars, setStars] = useState<Star[]>([]);
 
@@ -207,7 +212,6 @@ export default function VRScene() {
 
     const setPlayerColor = (color: string) => {
       console.log("[setPlayerColor] cambiando a", color);
-      // Usar setAttribute para modificar el material completo, conservando las otras propiedades
       player.setAttribute("material", `color: ${color}; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3`);
     };
 
@@ -276,6 +280,7 @@ export default function VRScene() {
   };
 
   const resetGameState = () => {
+    console.log("[resetGameState] reiniciando juego");
     setScore(0);
     setLives(MAX_LIVES);
     setLastCommand("-");
@@ -524,10 +529,10 @@ export default function VRScene() {
       const playerX = playerXRef.current;
       const playerHalf = PLAYER_RADIUS;
 
-      let hitObstacleId: string | null = null;
-      let pickedStarId: string | null = null;
+      let hitOccurred = false;
+      let starCollected = false;
 
-      // Actualizar obstáculos y detectar colisiones
+      // Actualizar obstáculos y detectar colisiones (eliminando el obstáculo si colisiona)
       setObstacles((prev) => {
         const next: Obstacle[] = [];
         for (const o of prev) {
@@ -541,17 +546,21 @@ export default function VRScene() {
             const dx = Math.abs(o.laneX - playerX);
             const dy = Math.abs(OBSTACLE_Y - (PLAYER_Y_BASE + jumpOffsetY));
             const radiusSum = playerHalf + half;
-            if (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum) {
-              hitObstacleId = o.id;
-              console.log("[COLLISION] obstáculo detectado:", o.id, "playerX:", playerX, "laneX:", o.laneX, "newZ:", newZ);
+            const colliding = (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum);
+            
+            if (colliding && !hitOccurred && hitCooldownRef.current <= 0) {
+              hitOccurred = true;
+              console.log("[COLLISION] obstáculo eliminado", o.id);
+              // No agregar este obstáculo al nuevo array (eliminarlo)
+            } else {
+              next.push({ ...o, z: newZ });
             }
-            next.push({ ...o, z: newZ });
           }
         }
         return next;
       });
 
-      // Actualizar estrellas y detectar recolección
+      // Actualizar estrellas y detectar recolección (eliminando la estrella si se recoge)
       setStars((prev) => {
         const next: Star[] = [];
         for (const s of prev) {
@@ -565,9 +574,12 @@ export default function VRScene() {
             const dx = Math.abs(s.laneX - playerX);
             const dy = Math.abs(STAR_Y - (PLAYER_Y_BASE + jumpOffsetY));
             const radiusSum = playerHalf + half;
-            if (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum) {
-              pickedStarId = s.id;
-              console.log("[COLLISION] estrella recolectada:", s.id);
+            const colliding = (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum);
+            
+            if (colliding && !starCollected && hitCooldownRef.current <= 0) {
+              starCollected = true;
+              console.log("[COLLISION] estrella recolectada", s.id);
+              // No agregar esta estrella al nuevo array (eliminarla)
             } else {
               next.push({ ...s, z: newZ });
             }
@@ -576,32 +588,29 @@ export default function VRScene() {
         return next;
       });
 
+      // Procesar el efecto del impacto o recolección (solo si no hay cooldown activo)
       if (hitCooldownRef.current <= 0) {
-        if (pickedStarId) {
+        if (starCollected) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
-          starElsRef.current.delete(pickedStarId);
-          setLives((l) => {
-            const newLives = Math.min(MAX_LIVES, l + 1);
-            console.log("[STAR] +1 vida, nuevas vidas:", newLives);
+          setLives((prevLives) => {
+            const newLives = Math.min(MAX_LIVES, prevLives + 1);
+            console.log("[STAR] prevLives:", prevLives, "newLives:", newLives);
             return newLives;
           });
           setMicStatus("¡Recogiste una estrella! +1 vida.");
-        } else if (hitObstacleId) {
+        } else if (hitOccurred) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
-          setObstacles((prev) => prev.filter((o) => o.id !== hitObstacleId));
-          obstacleElsRef.current.delete(hitObstacleId);
           applyHitEffect(); // Aplica vibración y parpadeo
-
-          setLives((l) => {
-            const next = Math.max(0, l - 1);
-            console.log("[HIT] -1 vida, nuevas vidas:", next);
-            if (next <= 0) {
+          setLives((prevLives) => {
+            const newLives = Math.max(0, prevLives - 1);
+            console.log("[HIT] prevLives:", prevLives, "newLives:", newLives);
+            if (newLives <= 0) {
               setGameStatus("Game Over");
               setMicStatus("¡Game Over! Perdiste todas tus vidas.");
             } else {
-              setMicStatus(`¡Choque! Te quedan ${next} vidas.`);
+              setMicStatus(`¡Choque! Te quedan ${newLives} vidas.`);
             }
-            return next;
+            return newLives;
           });
         }
       }
@@ -789,6 +798,7 @@ export default function VRScene() {
                 <span style={{ opacity: 0.85 }}>Vidas</span>
                 <strong style={{ color: "#ff4d4d" }}>
                   {Array.from({ length: MAX_LIVES }, (_, i) => (i < lives ? "❤" : "♡")).join(" ")}
+                  <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>({lives})</span>
                 </strong>
               </div>
 
