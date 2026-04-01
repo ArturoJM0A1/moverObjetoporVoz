@@ -1,110 +1,79 @@
-# 🎤 VR Voice Runner
+# 🎮 Juego VR Controlado por Voz (A-Frame + React)
 
-Un juego de carreras infinitas en 3D, desarrollado con Next.js y A‑Frame, donde controlas una esfera azul mediante comandos de voz. Esquiva obstáculos, recolecta estrellas y sobrevive el mayor tiempo posible.
+Un emocionante juego de supervivencia (estilo *endless runner*) en 3D y Realidad Virtual, construido con **React / Next.js** y **A-Frame**. La característica principal de este juego es que **se controla completamente con tu voz** utilizando la Web Speech API en tiempo real.
 
-## ✨ Características
+## ✨ Características Principales
 
-- 🗣️ **Control por voz** – Muévete a la izquierda, derecha o salta usando comandos de voz simples.
-- 🎮 **Escena VR inmersiva** – Construida con A‑Frame, funciona en cualquier navegador (móvil o escritorio).
-- 💖 **Sistema de vidas** – 5 corazones; pierde uno al chocar con un obstáculo, gana uno al recoger una estrella.
-- ⭐ **Estrellas coleccionables** – Aumentan tus vidas y añaden un efecto visual.
-- 🚀 **Dificultad progresiva** – La velocidad del juego aumenta con el tiempo.
-- 🎯 **Retroalimentación visual** – La esfera escala brevemente al recibir un golpe; las estrellas rotan.
+* 🎙️ **Control por Voz Ultra Rápido:** Utiliza procesamiento de resultados provisionales (`interimResults`) y coincidencia de subcadenas para reaccionar a tus comandos en fracciones de segundo, antes de que termines de pronunciar la palabra.
+* 🕶️ **Entorno 3D y VR:** Renderizado fluido en el navegador gracias a A-Frame.
+* 🏃‍♂️ **Mecánicas de Esquiva y Disparo:** Muévete entre 3 carriles, salta sobre obstáculos o destrúyelos con proyectiles.
+* ⭐ **Coleccionables:** Recoge **Estrellas** para ganar vidas extra y **Pirámides** para recargar tu munición.
+* 📈 **Dificultad Progresiva:** La velocidad del juego aumenta a medida que sobrevives más tiempo.
 
-## 🛠️ Tecnologías utilizadas
+## 🗣️ Comandos de Voz
 
-- [Next.js](https://nextjs.org/) – Framework React
-- [A-Frame](https://aframe.io/) – Framework WebVR
-- TypeScript
-- Web Speech API – para reconocimiento de voz (idioma español‑MX)
+Asegúrate de dar permisos de micrófono en tu navegador. El juego está configurado para reconocer español (`es-MX`). Los comandos disponibles son:
 
-## 🚀 Cómo empezar
+* **"Izquierda"**: Mueve al jugador al carril izquierdo.
+* **"Derecha"**: Mueve al jugador al carril derecho.
+* **"Saltar"**: Realiza un salto largo para esquivar obstáculos por arriba (ideal para cuando no tienes munición).
+* **"Disparar"** o **"Fuego"**: Lanza un proyectil hacia adelante para destruir el obstáculo que viene en tu carril.
 
-### Requisitos previos
+*(Nota: También puedes presionar la tecla **W** en tu teclado como atajo alternativo para disparar).*
 
-- Node.js (v16 o superior)
-- Un navegador moderno con soporte para Web Speech API (Chrome, Edge, Safari)
-- Un micrófono
+## 🧩 Elementos del Juego
 
-### Instalación
+| Objeto | Color/Forma | Función |
+| :--- | :--- | :--- |
+| **Jugador** | 🔵 Esfera Cian | Eres tú. Cambia a blanco si recibes daño. |
+| **Obstáculo** | 🟣 Rosa (Cubo/Esfera/Cilindro) | Evítalos o destrúyelos. Te quitan 1 vida si chocas. |
+| **Estrella** | 🟡 Octaedro Amarillo | **+1 Vida** (Máximo 5 vidas). |
+| **Pirámide** | 🟢 Cono Verde | **+6 Proyectiles** de munición. |
+| **Proyectil** | 🔴 Esfera Roja | Destruye un obstáculo en tu camino. |
 
-1. Clona el repositorio:
+## 🚀 Instalación y Uso
 
-   ```bash
-   git clone https://github.com/tu-usuario/vr-voice-runner.git
-   cd vr-voice-runner
-   ```
-2. Instala las dependencias:
+Este componente está diseñado para funcionar en un entorno de **Next.js** (App Router o Pages Router).
 
-   ```bash
-   npm install
-   ```
-3. Inicia el servidor de desarrollo:
+1.  **Clona el repositorio** o crea un nuevo proyecto de Next.js:
+    ```bash
+    npx create-next-app@latest mi-juego-vr
+    cd mi-juego-vr
+    ```
 
-   ```bash
-   npm run dev
-   ```
-4. Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
+2.  **Copia el código:**
+    Crea un archivo llamado `VRScene.tsx` (o `.jsx`) en tu carpeta de componentes y pega el código del juego.
 
-### Construir para producción
+3.  **Importa el componente:**
+    En tu página principal (ej. `app/page.tsx`), importa y renderiza el componente:
+    ```tsx
+    import VRScene from './components/VRScene';
 
-```bash
-npm run build
-npm start
-```
+    export default function Home() {
+      return (
+        <main>
+          <VRScene />
+        </main>
+      );
+    }
+    ```
 
-## 🎮 Cómo jugar
+4.  **Inicia el servidor de desarrollo:**
+    ```bash
+    npm run dev
+    ```
 
-1. **Permite el acceso al micrófono** – Haz clic en el botón verde **Activar micrófono** y concede el permiso cuando el navegador lo solicite.
-2. **El juego comienza** – Una vez activado, la esfera avanzará automáticamente.
-3. **Comandos de voz** – Habla con claridad en español:
+5.  **Abre el juego:**
+    Ve a `http://localhost:3000` en tu navegador.
+    *⚠️ Importante:* Se recomienda encarecidamente usar **Google Chrome** o **Microsoft Edge**, ya que tienen el mejor soporte nativo para la `Web Speech API`.
 
-   - *"izquierda"* – mueve la esfera un carril a la izquierda
-   - *"derecha"* – mueve la esfera un carril a la derecha
-   - *"saltar"* – salta para esquivar obstáculos
-   - Puedes combinar comandos en una frase, por ejemplo: *"salta a la derecha"* ejecutará salto y movimiento a la derecha.
-4. **Evita los obstáculos** – Los cubos, esferas y cilindros rojos restan una vida si los tocas.
-5. **Recoge estrellas** – Los octaedros dorados te otorgan una vida extra (máximo 5 corazones).
-6. **Sobrevive** – El juego termina cuando pierdes todas las vidas. Presiona **Reiniciar** para empezar de nuevo.
+## 🛠️ Tecnologías Utilizadas
 
-## 🧠 Mecánicas del juego
+* **React:** Para el manejo del estado (vidas, puntuación, munición) y el ciclo de vida de los elementos.
+* **Next.js (`next/script`):** Para inyectar la librería de A-Frame de forma optimizada.
+* **A-Frame (`aframe.io`):** Framework web para construir experiencias de realidad virtual (WebVR/WebXR) usando HTML.
+* **Web Speech API (`SpeechRecognition`):** Para capturar y procesar el audio del micrófono de forma nativa en el navegador sin necesidad de servidores externos.
 
-- **Carriles** – Tres carriles: izquierdo, central, derecho.
-- **Puntuación** – Aumenta con el tiempo sobrevivido (10 puntos por segundo).
-- **Dificultad** – La velocidad aumenta gradualmente, haciendo que los obstáculos aparezcan con más frecuencia.
-- **Salto** – Dura 0.4 segundos y eleva la esfera para esquivar obstáculos en el suelo.
+## ⚙️ Configuración Técnica Destacada
 
-## 🛑 Solución de problemas
-
-
-| Problema                            | Solución                                                                                                                       |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| El micrófono no funciona           | Asegúrate de haber concedido el permiso. En Chrome, haz clic en el candado en la barra de direcciones y permite el micrófono. |
-| Los comandos de voz no se reconocen | Habla con claridad. El reconocimiento está configurado para español de México. Un entorno silencioso ayuda.                  |
-| El juego no comienza                | Solo inicia después de hacer clic en**Activar micrófono** y aceptar el permiso.                                               |
-| La escena de A‑Frame no carga      | Revisa la consola del navegador. Si estás detrás de un cortafuegos, asegúrate de que el CDN de A‑Frame sea accesible.       |
-| "Game Over" demasiado rápido       | Intenta anticipar los obstáculos y usa el salto temprano.                                                                      |
-
-## 🧪 Compatibilidad de navegadores
-
-- **Funciona mejor en** – Chrome, Edge, Safari (escritorio y móvil)
-- **Soporte parcial** – Firefox (la API Web Speech puede requerir habilitarse en configuración)
-- **No compatible** – Internet Explorer, navegadores antiguos
-
-## 📁 Estructura del proyecto
-
-```
-.
-├── src/
-│   ├── components/
-│   │   └── VRScene.tsx   # Componente principal del juego
-│   └── pages/
-│       └── index.tsx      # Página de entrada de Next.js
-├── public/                 # Archivos estáticos
-├── package.json
-└── README.md
-```
-
-## 🙌 Contribuciones
-
-¡Las contribuciones son bienvenidas! Por favor, abre un issue o pull request para sugerir mejoras, reportar errores o añadir nuevas características.
+El juego incorpora un debounce inteligente y un escaneo lineal de caracteres (`lastProcessedCharIndexRef`). Esto soluciona el clásico problema de latencia de las APIs de voz en navegadores, permitiendo que el juego lea fragmentos de voz (como *"izquierd..."*) y ejecute la acción instantáneamente sin duplicar movimientos.
