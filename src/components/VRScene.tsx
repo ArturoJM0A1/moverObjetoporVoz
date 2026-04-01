@@ -956,6 +956,7 @@ export default function VRScene() {
               boxShadow: "0 4px 15px rgba(0,0,0,0.5)",
               zIndex: 10,
             }}
+            className="principal"
           >
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
