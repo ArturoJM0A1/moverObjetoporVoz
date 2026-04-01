@@ -1037,6 +1037,35 @@ export default function VRScene() {
               También puedes presionar la tecla <strong>W</strong> para disparar.
               {!micEnabled && " Activa el micrófono para comenzar."}
             </p>
+
+            {/* MODIFICACIÓN: Mensaje de Game Over dentro del panel principal */}
+            {lives === 0 && (
+              <div style={{
+                marginTop: 12,
+                padding: "12px",
+                background: "rgba(255, 50, 100, 0.9)",
+                borderRadius: 8,
+                textAlign: "center",
+                border: "1px solid #ff99aa"
+              }}>
+                <div style={{ fontWeight: "bold", fontSize: "1.3rem", marginBottom: 8 }}>💀 GAME OVER 💀</div>
+                <button
+                  onClick={resetGame}
+                  style={{
+                    background: "#ffffff",
+                    border: "none",
+                    padding: "6px 16px",
+                    borderRadius: 20,
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    fontSize: "1rem",
+                    color: "#aa2244"
+                  }}
+                >
+                  Da click para jugar de nuevo
+                </button>
+              </div>
+            )}
           </div>
 
           {/* OVERLAY GAME OVER A PANTALLA COMPLETA */}
