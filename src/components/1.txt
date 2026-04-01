@@ -83,8 +83,7 @@ function normalizeSpeech(text: string): string {
   return text
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")         // eliminar acentos
-    .replace(/[^a-z\s]/g, "")               // conservar solo letras y espacios
+    .replace(/[\u0300-\u036f]/g, "")
     .trim();
 }
 
@@ -115,12 +114,6 @@ export default function VRScene() {
   const [lives, setLives] = useState(MAX_LIVES);
   const [lastCommand, setLastCommand] = useState("-");
   const [lastTranscript, setLastTranscript] = useState("-");
-
-  // Ref para mantener el valor actual de gameStatus y usarlo en callbacks asincrónicos
-  const gameStatusRef = useRef(gameStatus);
-  useEffect(() => {
-    gameStatusRef.current = gameStatus;
-  }, [gameStatus]);
 
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [stars, setStars] = useState<Star[]>([]);
@@ -185,29 +178,16 @@ export default function VRScene() {
 
   // Función que activa el salto
   const performJump = () => {
-    console.log("[performJump] llamado. gameStatusRef.current:", gameStatusRef.current);
-    if (gameStatusRef.current !== "Jugando") {
-      console.log("[performJump] ignorado porque gameStatus no es Jugando");
-      return;
-    }
-    if (jumpTimeRemainingRef.current > 0) {
-      console.log("[performJump] ya saltando, ignorado");
-      return;
-    }
+    if (gameStatus !== "Jugando") return;
+    if (jumpTimeRemainingRef.current > 0) return;
     jumpTimeRemainingRef.current = JUMP_DURATION;
     setLastCommand("saltar");
     setMicStatus("Saltaste!");
-    console.log("[performJump] ejecutado");
   };
 
   const applyVoiceCommand = (transcript: string): string | null => {
-    console.log("[applyVoiceCommand] transcript original:", transcript);
-    if (gameStatusRef.current !== "Jugando") {
-      console.log("[applyVoiceCommand] ignorado porque gameStatus no es Jugando");
-      return null;
-    }
+    if (gameStatus !== "Jugando") return null;
     const normalized = normalizeSpeech(transcript);
-    console.log("[applyVoiceCommand] normalizado:", normalized);
     const executed: string[] = [];
 
     if (normalized.includes("saltar")) {
@@ -219,21 +199,18 @@ export default function VRScene() {
       const laneIdx = pickLaneIndexFromX(playerTargetXRef.current);
       playerTargetXRef.current = LANES[Math.max(0, laneIdx - 1)];
       executed.push("izquierda");
-      console.log("[applyVoiceCommand] izquierda ejecutado, nueva X:", playerTargetXRef.current);
     }
 
     if (normalized.includes("derecha")) {
       const laneIdx = pickLaneIndexFromX(playerTargetXRef.current);
       playerTargetXRef.current = LANES[Math.min(LANES.length - 1, laneIdx + 1)];
       executed.push("derecha");
-      console.log("[applyVoiceCommand] derecha ejecutado, nueva X:", playerTargetXRef.current);
     }
 
     if (executed.length > 0) {
       setLastCommand(executed.join(", "));
       return executed.join(", ");
     }
-    console.log("[applyVoiceCommand] ningún comando reconocido");
     return null;
   };
 
@@ -287,7 +264,6 @@ export default function VRScene() {
           transcript = event.results[i][0]?.transcript?.trim() ?? "";
         }
         if (!transcript) return;
-        console.log("[onresult] transcript recibido:", transcript);
         setLastTranscript(transcript);
         const executed = applyVoiceCommand(transcript);
         if (executed) setMicStatus(`Comando aplicado: ${executed}`);
@@ -295,7 +271,6 @@ export default function VRScene() {
 
       recognition.onerror = (event: { error?: string }) => {
         const errorCode = event.error ?? "desconocido";
-        console.log("[onerror] error:", errorCode);
 
         if (errorCode === "not-allowed") {
           setMicStatus("Permiso denegado. Habilita el micrófono en el navegador.");
@@ -344,12 +319,10 @@ export default function VRScene() {
       };
 
       recognition.onend = () => {
-        console.log("[onend] reconocimiento terminado, micActiveRef:", micActiveRef.current);
         if (!micActiveRef.current) return;
         try {
           recognition.start();
           micRetryAttemptRef.current = 0;
-          console.log("[onend] reiniciado correctamente");
         } catch {
           setMicStatus("No pude reiniciar el micrófono. Presiona activar nuevamente.");
           micActiveRef.current = false;
@@ -368,7 +341,6 @@ export default function VRScene() {
       setGameStatus("Jugando");
       setMicStatus("Escuchando comandos de voz...");
       resetGameState(); // Reiniciar el juego al activar el micrófono
-      console.log("[startMicrophone] micrófono iniciado, estado Jugando");
     } catch {
       setMicStatus("No pude iniciar el micrófono. Intenta de nuevo.");
       micActiveRef.current = false;
@@ -388,7 +360,6 @@ export default function VRScene() {
       micRetryTimeoutRef.current = null;
     }
     recognitionRef.current?.stop();
-    console.log("[stopMicrophone] micrófono detenido");
   };
 
   const resetGame = () => {
@@ -400,7 +371,6 @@ export default function VRScene() {
       setGameStatus("Esperando");
       setMicStatus("Micrófono desactivado. Actívalo para jugar.");
     }
-    console.log("[resetGame] juego reiniciado");
   };
 
   // Bucle principal del juego
