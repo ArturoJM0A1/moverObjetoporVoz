@@ -26,6 +26,13 @@ type AFrameEntity = HTMLElement & {
     position: { x: number; y: number; z: number };
     scale: { x: number; y: number; z: number; set: (x: number, y: number, z: number) => void };
   };
+  components?: {
+    material?: {
+      data?: { color?: string };
+      attrValue?: string;
+      setAttribute?: (attr: string, value: string) => void;
+    };
+  };
 };
 
 declare global {
@@ -79,12 +86,16 @@ const HIT_COOLDOWN_SEC = 0.55;
 const JUMP_DURATION = 0.4; // segundos
 const JUMP_HEIGHT = 1.2;   // altura adicional (Y)
 
+// Colores del jugador
+const PLAYER_COLOR_NORMAL = "#3b82f6";
+const PLAYER_COLOR_HIT = "#60a5fa"; // azul más claro para el parpadeo
+
 function normalizeSpeech(text: string): string {
   return text
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")         // eliminar acentos
-    .replace(/[^a-z\s]/g, "")               // conservar solo letras y espacios
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z\s]/g, "")
     .trim();
 }
 
@@ -140,6 +151,7 @@ export default function VRScene() {
   const playerXRef = useRef(0);
 
   const vibrationTimeoutRef = useRef<number | null>(null);
+  const colorTimeoutRef = useRef<number | null>(null); // Para el parpadeo del color
 
   // Estado del salto
   const jumpTimeRemainingRef = useRef(0);
@@ -154,11 +166,16 @@ export default function VRScene() {
     return { minX, maxX };
   }, []);
 
-  // VIBRACIÓN
-  const triggerPlayerVibration = () => {
+  // Función que aplica el efecto de vibración y parpadeo al chocar
+  const applyHitEffect = () => {
+    console.log("[applyHitEffect] llamado");
     const player = playerElRef.current;
-    if (!player) return;
+    if (!player) {
+      console.log("[applyHitEffect] player no encontrado");
+      return;
+    }
 
+    // ---- Efecto de escala (vibración) ----
     if (vibrationTimeoutRef.current) {
       window.clearTimeout(vibrationTimeoutRef.current);
       vibrationTimeoutRef.current = null;
@@ -181,6 +198,27 @@ export default function VRScene() {
         vibrationTimeoutRef.current = null;
       }, 120);
     }
+
+    // ---- Efecto de parpadeo de color ----
+    if (colorTimeoutRef.current) {
+      window.clearTimeout(colorTimeoutRef.current);
+      colorTimeoutRef.current = null;
+    }
+
+    const setPlayerColor = (color: string) => {
+      console.log("[setPlayerColor] cambiando a", color);
+      // Usar setAttribute para modificar el material completo, conservando las otras propiedades
+      player.setAttribute("material", `color: ${color}; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3`);
+    };
+
+    // Cambiar a color de impacto
+    setPlayerColor(PLAYER_COLOR_HIT);
+
+    // Revertir al color normal después de 120ms
+    colorTimeoutRef.current = window.setTimeout(() => {
+      setPlayerColor(PLAYER_COLOR_NORMAL);
+      colorTimeoutRef.current = null;
+    }, 120);
   };
 
   // Función que activa el salto
@@ -261,6 +299,7 @@ export default function VRScene() {
       playerEl.object3D.position.y = PLAYER_Y_BASE;
       playerEl.object3D.position.z = PLAYER_Z;
       playerEl.object3D.scale.set(1, 1, 1);
+      playerEl.setAttribute("material", `color: ${PLAYER_COLOR_NORMAL}; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3`);
     }
   };
 
@@ -504,6 +543,7 @@ export default function VRScene() {
             const radiusSum = playerHalf + half;
             if (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum) {
               hitObstacleId = o.id;
+              console.log("[COLLISION] obstáculo detectado:", o.id, "playerX:", playerX, "laneX:", o.laneX, "newZ:", newZ);
             }
             next.push({ ...o, z: newZ });
           }
@@ -527,6 +567,7 @@ export default function VRScene() {
             const radiusSum = playerHalf + half;
             if (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum) {
               pickedStarId = s.id;
+              console.log("[COLLISION] estrella recolectada:", s.id);
             } else {
               next.push({ ...s, z: newZ });
             }
@@ -539,16 +580,21 @@ export default function VRScene() {
         if (pickedStarId) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
           starElsRef.current.delete(pickedStarId);
-          setLives((l) => Math.min(MAX_LIVES, l + 1));
+          setLives((l) => {
+            const newLives = Math.min(MAX_LIVES, l + 1);
+            console.log("[STAR] +1 vida, nuevas vidas:", newLives);
+            return newLives;
+          });
           setMicStatus("¡Recogiste una estrella! +1 vida.");
         } else if (hitObstacleId) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
           setObstacles((prev) => prev.filter((o) => o.id !== hitObstacleId));
           obstacleElsRef.current.delete(hitObstacleId);
-          triggerPlayerVibration();
+          applyHitEffect(); // Aplica vibración y parpadeo
 
           setLives((l) => {
             const next = Math.max(0, l - 1);
+            console.log("[HIT] -1 vida, nuevas vidas:", next);
             if (next <= 0) {
               setGameStatus("Game Over");
               setMicStatus("¡Game Over! Perdiste todas tus vidas.");
@@ -583,6 +629,10 @@ export default function VRScene() {
       if (vibrationTimeoutRef.current) {
         window.clearTimeout(vibrationTimeoutRef.current);
         vibrationTimeoutRef.current = null;
+      }
+      if (colorTimeoutRef.current) {
+        window.clearTimeout(colorTimeoutRef.current);
+        colorTimeoutRef.current = null;
       }
     };
   }, []);
@@ -654,7 +704,7 @@ export default function VRScene() {
               }}
               position={`0 ${PLAYER_Y_BASE} ${PLAYER_Z}`}
               geometry={`primitive: sphere; radius: ${PLAYER_RADIUS}`}
-              material="color: #3b82f6; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3"
+              material={`color: ${PLAYER_COLOR_NORMAL}; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3`}
             ></a-entity>
 
             {obstacles.map((o) => renderObstacle(o))}
