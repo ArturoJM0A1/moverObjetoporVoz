@@ -57,6 +57,13 @@ type Star = {
   z: number;
 };
 
+type Projectile = {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+};
+
 const LANES = [-2.4, 0, 2.4] as const;
 
 const PLAYER_Y_BASE = 1.0;
@@ -76,8 +83,8 @@ const STAR_DESPAWN_Z = 6;
 const STAR_SIZE = 0.85;
 
 const SPAWN_EVERY_MS = 900;
-const BASE_SPEED = 4.5;               // Más lento
-const SPEED_RAMP_PER_SEC = 0.12;      // Rampa más suave
+const BASE_SPEED = 4.5;
+const SPEED_RAMP_PER_SEC = 0.12;
 
 const MAX_LIVES = 5;
 const HIT_COOLDOWN_SEC = 0.3;
@@ -85,11 +92,12 @@ const HIT_COOLDOWN_SEC = 0.3;
 const JUMP_DURATION = 0.4;
 const JUMP_HEIGHT = 2.5;
 
-// Colores estilo Blade Runner (neón)
-const PLAYER_COLOR_NORMAL = "#00ccff";
-const PLAYER_COLOR_HIT = "#88ddff";
-const OBSTACLE_COLOR = "#ff3366";
-const STAR_COLOR = "#ffcc33";
+// Colores estilo neón elegante
+const PLAYER_COLOR_NORMAL = "#4affff";
+const PLAYER_COLOR_HIT = "#ffffff";
+const OBSTACLE_COLOR = "#ff44cc";
+const STAR_COLOR = "#ffdd77";
+const PROJECTILE_COLOR = "#ff3333";
 
 function normalizeSpeech(text: string): string {
   return text
@@ -133,19 +141,24 @@ export default function VRScene() {
     gameStatusRef.current = gameStatus;
   }, [gameStatus]);
 
-  // Refs para evitar re-renderizados innecesarios
   const obstaclesRef = useRef<Obstacle[]>([]);
   const starsRef = useRef<Star[]>([]);
+  const projectilesRef = useRef<Projectile[]>([]);
   const [obstaclesVersion, setObstaclesVersion] = useState(0);
   const [starsVersion, setStarsVersion] = useState(0);
+  const [projectilesVersion, setProjectilesVersion] = useState(0);
   const obstaclesVersionRef = useRef(obstaclesVersion);
   const starsVersionRef = useRef(starsVersion);
+  const projectilesVersionRef = useRef(projectilesVersion);
   useEffect(() => {
     obstaclesVersionRef.current = obstaclesVersion;
   }, [obstaclesVersion]);
   useEffect(() => {
     starsVersionRef.current = starsVersion;
   }, [starsVersion]);
+  useEffect(() => {
+    projectilesVersionRef.current = projectilesVersion;
+  }, [projectilesVersion]);
 
   const obstacleElsRef = useRef(new Map<string, HTMLElement>());
   const starElsRef = useRef(new Map<string, HTMLElement>());
@@ -164,6 +177,7 @@ export default function VRScene() {
   const vibrationTimeoutRef = useRef<number | null>(null);
   const colorTimeoutRef = useRef<number | null>(null);
   const jumpTimeRemainingRef = useRef(0);
+  const shootCooldownRef = useRef(0);
 
   const supportsSpeech =
     typeof window !== "undefined" &&
@@ -208,7 +222,7 @@ export default function VRScene() {
     }
 
     const setPlayerColor = (color: string) => {
-      player.setAttribute("material", `color: ${color}; emissive: #0088aa; metalness: 0.8; roughness: 0.2`);
+      player.setAttribute("material", `color: ${color}; emissive: #00aaff; metalness: 0.8; roughness: 0.2`);
     };
 
     setPlayerColor(PLAYER_COLOR_HIT);
@@ -224,6 +238,24 @@ export default function VRScene() {
     jumpTimeRemainingRef.current = JUMP_DURATION;
     setLastCommand("saltar");
     setMicStatus("Saltaste!");
+  };
+
+  const shootProjectile = () => {
+    if (gameStatusRef.current !== "Jugando") return;
+    if (shootCooldownRef.current > 0) return;
+
+    const playerX = playerXRef.current;
+    const id = `proj-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    projectilesRef.current.push({
+      id,
+      x: playerX,
+      z: PLAYER_Z - 0.5, // Justo delante del jugador (más negativo)
+      radius: 0.2,
+    });
+    setProjectilesVersion(v => v + 1);
+    shootCooldownRef.current = 0.3;
+    setLastCommand("disparo");
+    setMicStatus("¡Disparaste!");
   };
 
   const applyVoiceCommand = (transcript: string): string | null => {
@@ -246,6 +278,11 @@ export default function VRScene() {
       const laneIdx = pickLaneIndexFromX(playerTargetXRef.current);
       playerTargetXRef.current = LANES[Math.min(LANES.length - 1, laneIdx + 1)];
       executed.push("derecha");
+    }
+
+    if (normalized.includes("disparar") || normalized.includes("fuego")) {
+      shootProjectile();
+      executed.push("disparar");
     }
 
     if (executed.length > 0) {
@@ -274,11 +311,14 @@ export default function VRScene() {
     lastFrameMsRef.current = null;
     hitCooldownRef.current = 0;
     jumpTimeRemainingRef.current = 0;
+    shootCooldownRef.current = 0;
 
     obstaclesRef.current = [];
     starsRef.current = [];
+    projectilesRef.current = [];
     setObstaclesVersion(v => v + 1);
     setStarsVersion(v => v + 1);
+    setProjectilesVersion(v => v + 1);
     obstacleElsRef.current.clear();
     starElsRef.current.clear();
 
@@ -290,7 +330,7 @@ export default function VRScene() {
       playerEl.object3D.position.y = PLAYER_Y_BASE;
       playerEl.object3D.position.z = PLAYER_Z;
       playerEl.object3D.scale.set(1, 1, 1);
-      playerEl.setAttribute("material", `color: ${PLAYER_COLOR_NORMAL}; emissive: #0088aa; metalness: 0.8; roughness: 0.2`);
+      playerEl.setAttribute("material", `color: ${PLAYER_COLOR_NORMAL}; emissive: #00aaff; metalness: 0.8; roughness: 0.2`);
     }
   };
 
@@ -443,12 +483,12 @@ export default function VRScene() {
       lastFrameMsRef.current = nowMs;
 
       hitCooldownRef.current = Math.max(0, hitCooldownRef.current - dt);
+      shootCooldownRef.current = Math.max(0, shootCooldownRef.current - dt);
       aliveSecondsRef.current += dt;
       setScore(Math.floor(aliveSecondsRef.current * 10));
 
       const speed = BASE_SPEED + aliveSecondsRef.current * SPEED_RAMP_PER_SEC;
 
-      // Salto
       let jumpOffsetY = 0;
       if (jumpTimeRemainingRef.current > 0) {
         const t = (JUMP_DURATION - jumpTimeRemainingRef.current) / JUMP_DURATION;
@@ -511,7 +551,47 @@ export default function VRScene() {
       let hitOccurred = false;
       let starCollected = false;
 
-      // Procesar obstáculos
+      // ----- Proyectiles: movimiento y colisiones -----
+      const newProjectiles: Projectile[] = [];
+      const destroyedObstacleIds = new Set<string>();
+
+      for (const proj of projectilesRef.current) {
+        // Movimiento hacia los obstáculos (dirección negativa Z)
+        const newZ = proj.z - 12 * dt;
+        let hit = false;
+
+        // Colisión con obstáculos
+        for (const obs of obstaclesRef.current) {
+          if (destroyedObstacleIds.has(obs.id)) continue;
+          const obsHalf = obs.size / 2;
+          const dx = Math.abs(obs.laneX - proj.x);
+          const dz = Math.abs(newZ - obs.z);
+          const dy = Math.abs(OBSTACLE_Y - PLAYER_Y_BASE);
+          const radiusSum = proj.radius + obsHalf;
+          if (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum) {
+            hit = true;
+            destroyedObstacleIds.add(obs.id);
+            break;
+          }
+        }
+
+        if (!hit && newZ > OBSTACLE_SPAWN_Z - 2) {
+          // Mantener mientras no se aleje demasiado (más allá del spawn)
+          newProjectiles.push({ ...proj, z: newZ });
+        }
+      }
+
+      // Eliminar obstáculos destruidos
+      if (destroyedObstacleIds.size > 0) {
+        obstaclesRef.current = obstaclesRef.current.filter(obs => !destroyedObstacleIds.has(obs.id));
+        setObstaclesVersion(v => v + 1);
+      }
+      projectilesRef.current = newProjectiles;
+      if (projectilesRef.current.length !== projectilesVersionRef.current) {
+        setProjectilesVersion(v => v + 1);
+      }
+
+      // ----- Movimiento de obstáculos y colisión con jugador -----
       const newObstacles: Obstacle[] = [];
       for (const o of obstaclesRef.current) {
         const newZ = o.z + speed * dt;
@@ -528,7 +608,6 @@ export default function VRScene() {
 
           if (colliding && !hitOccurred && hitCooldownRef.current <= 0) {
             hitOccurred = true;
-            // no agregar
           } else {
             newObstacles.push({ ...o, z: newZ });
           }
@@ -536,7 +615,7 @@ export default function VRScene() {
       }
       obstaclesRef.current = newObstacles;
 
-      // Procesar estrellas
+      // ----- Estrellas -----
       const newStars: Star[] = [];
       for (const s of starsRef.current) {
         const newZ = s.z + speed * dt;
@@ -553,7 +632,6 @@ export default function VRScene() {
 
           if (colliding && !hitOccurred && !starCollected && hitCooldownRef.current <= 0) {
             starCollected = true;
-            // no agregar
           } else {
             newStars.push({ ...s, z: newZ });
           }
@@ -561,7 +639,7 @@ export default function VRScene() {
       }
       starsRef.current = newStars;
 
-      // Aplicar efectos
+      // ----- Aplicar efectos de colisión -----
       if (hitCooldownRef.current <= 0) {
         if (hitOccurred) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
@@ -600,6 +678,18 @@ export default function VRScene() {
       }
     };
   }, [aframeLoaded, gameStatus, micEnabled, laneBounds.maxX, laneBounds.minX]);
+
+  // Escucha de teclado para disparar con 'w'
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        shootProjectile();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -644,13 +734,23 @@ export default function VRScene() {
         }}
         position={`${o.laneX} ${OBSTACLE_Y} ${o.z}`}
         geometry={geometryStr}
-        material={`color: ${OBSTACLE_COLOR}; emissive: #cc1155; metalness: 0.5; roughness: 0.3`}
+        material={`color: ${OBSTACLE_COLOR}; emissive: #ff2299; metalness: 0.5; roughness: 0.3`}
       />
     );
   };
 
+  const renderProjectile = (p: Projectile) => (
+    <a-entity
+      key={p.id}
+      position={`${p.x} ${PLAYER_Y_BASE} ${p.z}`}
+      geometry="primitive: sphere; radius: 0.2"
+      material={`color: ${PROJECTILE_COLOR}; emissive: #ff0000; metalness: 0.2; roughness: 0.1`}
+    />
+  );
+
   const obstaclesToRender = obstaclesRef.current;
   const starsToRender = starsRef.current;
+  const projectilesToRender = projectilesRef.current;
 
   return (
     <>
@@ -665,30 +765,32 @@ export default function VRScene() {
           <a-scene
             embedded
             renderer="antialias: true; colorManagement: true"
-            fog="type: exponential; color: #0a0a2a; density: 0.04"
+            fog="type: exponential; color: #120c2c; density: 0.04"
             style={{ width: "100%", height: "100%" }}
           >
             <a-assets></a-assets>
-            <a-sky color="#0a0a2a"></a-sky>
+            <a-sky color="#120c2c"></a-sky>
 
-            {/* Luces estilo Blade Runner */}
-            <a-entity light="type: ambient; intensity: 0.4; color: #4455aa"></a-entity>
+            <a-entity light="type: ambient; intensity: 0.4; color: #6644aa"></a-entity>
             <a-entity
               light="type: directional; intensity: 1.2; color: #ffaa88"
               position="6 10 6"
             ></a-entity>
             <a-entity
-              light="type: point; intensity: 0.8; color: #ff44aa; distance: 12; decay: 1"
+              light="type: point; intensity: 0.9; color: #ff44aa; distance: 12; decay: 1"
               position="0 3 0"
             ></a-entity>
+            <a-entity
+              light="type: point; intensity: 0.7; color: #44aaff; distance: 14; decay: 1"
+              position="-3 4 2"
+            ></a-entity>
 
-            {/* Suelo oscuro con acabado metálico */}
             <a-plane
               position="0 0 -10"
               rotation="-90 0 0"
               width="26"
               height="120"
-              material="color: #112233; metalness: 0.1; roughness: 0.9"
+              material="color: #221133; metalness: 0.4; roughness: 0.6"
             ></a-plane>
 
             <a-entity
@@ -698,11 +800,10 @@ export default function VRScene() {
               }}
               position={`0 ${PLAYER_Y_BASE} ${PLAYER_Z}`}
               geometry={`primitive: sphere; radius: ${PLAYER_RADIUS}`}
-              material={`color: ${PLAYER_COLOR_NORMAL}; emissive: #0088aa; metalness: 0.8; roughness: 0.2`}
+              material={`color: ${PLAYER_COLOR_NORMAL}; emissive: #00aaff; metalness: 0.8; roughness: 0.2`}
             ></a-entity>
 
             {obstaclesToRender.map(o => renderObstacle(o))}
-
             {starsToRender.map(s => (
               <a-entity
                 key={s.id}
@@ -712,10 +813,11 @@ export default function VRScene() {
                 }}
                 position={`${s.laneX} ${STAR_Y} ${s.z}`}
                 geometry="primitive: octahedron; radius: 0.6"
-                material={`color: ${STAR_COLOR}; emissive: #ffaa00; metalness: 0.2; roughness: 0.1`}
+                material={`color: ${STAR_COLOR}; emissive: #ffaa33; metalness: 0.2; roughness: 0.1`}
                 animation="property: rotation; to: 0 360 0; loop: true; dur: 1000; easing: linear"
               ></a-entity>
             ))}
+            {projectilesToRender.map(p => renderProjectile(p))}
 
             <a-entity camera look-controls position="0 1.6 0"></a-entity>
           </a-scene>
@@ -728,11 +830,12 @@ export default function VRScene() {
               width: "min(92vw, 440px)",
               padding: "12px 14px",
               borderRadius: 12,
-              background: "rgba(7, 20, 44, 0.72)",
-              color: "#ecf4ff",
+              background: "rgba(12, 8, 32, 0.85)",
+              color: "#e0e0ff",
               fontFamily: "ui-sans-serif, system-ui, sans-serif",
               backdropFilter: "blur(6px)",
-              border: "1px solid rgba(255, 255, 255, 0.14)",
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+              boxShadow: "0 4px 15px rgba(0,0,0,0.5)",
             }}
           >
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -749,6 +852,7 @@ export default function VRScene() {
                   fontWeight: 700,
                   cursor: supportsSpeech ? "pointer" : "not-allowed",
                   opacity: supportsSpeech ? 1 : 0.6,
+                  transition: "all 0.2s",
                 }}
               >
                 {micEnabled ? "Apagar micrófono" : "Activar micrófono"}
@@ -758,13 +862,14 @@ export default function VRScene() {
                 type="button"
                 onClick={resetGame}
                 style={{
-                  border: "1px solid rgba(255,255,255,0.18)",
+                  border: "1px solid rgba(255,255,255,0.2)",
                   borderRadius: 10,
                   padding: "9px 12px",
-                  background: "rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.1)",
                   color: "#ffffff",
                   fontWeight: 700,
                   cursor: "pointer",
+                  transition: "all 0.2s",
                 }}
               >
                 Reiniciar
@@ -781,7 +886,7 @@ export default function VRScene() {
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ opacity: 0.85 }}>Vidas</span>
-                <strong style={{ color: "#ff4d4d" }}>
+                <strong style={{ color: "#ff6a6a" }}>
                   {Array.from({ length: MAX_LIVES }, (_, i) => (i < lives ? "❤" : "♡")).join(" ")}
                   <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>({lives})</span>
                 </strong>
@@ -801,11 +906,40 @@ export default function VRScene() {
             <p style={{ margin: "10px 0 6px" }}>{micStatus}</p>
             <p style={{ margin: "6px 0", fontSize: 13 }}>Último texto: {lastTranscript}</p>
             <p style={{ margin: "6px 0", fontSize: 12, opacity: 0.9 }}>
-              Di: <strong>izquierda</strong>, <strong>derecha</strong> o <strong>saltar</strong>{" "}
-              (puede estar dentro de una frase).
+              Di: <strong>izquierda</strong>, <strong>derecha</strong>, <strong>saltar</strong> o <strong>disparar</strong>.
+              También puedes presionar la tecla <strong>W</strong> para disparar.
               {!micEnabled && " Activa el micrófono para comenzar."}
             </p>
           </div>
+
+          {gameStatus === "Game Over" && (
+            <div
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                background: "rgba(0,0,0,0.85)",
+                backdropFilter: "blur(10px)",
+                borderRadius: "24px",
+                padding: "32px 48px",
+                textAlign: "center",
+                color: "#ff6666",
+                fontFamily: "monospace",
+                fontSize: "3rem",
+                fontWeight: "bold",
+                border: "2px solid #ff3366",
+                boxShadow: "0 0 40px rgba(255,51,102,0.6)",
+                zIndex: 200,
+                pointerEvents: "none",
+              }}
+            >
+              GAME OVER
+              <div style={{ fontSize: "1.2rem", marginTop: "16px", color: "#ccc" }}>
+                Presiona "Reiniciar" para jugar de nuevo
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div
