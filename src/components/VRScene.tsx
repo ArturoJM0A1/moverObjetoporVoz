@@ -141,6 +141,9 @@ export default function VRScene() {
   const micRetryTimeoutRef = useRef<number | null>(null);
   const micRetryAttemptRef = useRef(0);
 
+  // NUEVO: Rastreador de la última palabra procesada para evitar duplicados
+  const lastProcessedWordIndexRef = useRef(0);
+
   const [aframeLoaded, setAframeLoaded] = useState(false);
   const [micEnabled, setMicEnabled] = useState(false);
   const [micStatus, setMicStatus] = useState("Micrófono desactivado. Actívalo para jugar.");
@@ -258,8 +261,6 @@ export default function VRScene() {
     if (gameStatusRef.current !== "Jugando") return;
     if (jumpTimeRemainingRef.current > 0) return;
     jumpTimeRemainingRef.current = JUMP_DURATION;
-    setLastCommand("saltar");
-    setMicStatus("Saltaste!");
   };
 
   const shootProjectile = () => {
@@ -284,12 +285,12 @@ export default function VRScene() {
     });
     setProjectilesVersion(v => v + 1);
     shootCooldownRef.current = 0.3;
-    setLastCommand("disparo");
-    setMicStatus("¡Disparaste!");
   };
 
   const executeCommand = (command: string) => {
     const now = Date.now();
+    // Reducimos el debounce porque ahora controlamos por índices de palabras.
+    // Esto es solo para evitar que digan 2 comandos legítimos ridículamente rápido.
     if (now - lastVoiceCommandTimeRef.current < 200) return; 
     lastVoiceCommandTimeRef.current = now;
 
@@ -298,51 +299,48 @@ export default function VRScene() {
         {
           const laneIdx = pickLaneIndexFromX(playerTargetXRef.current);
           playerTargetXRef.current = LANES[Math.max(0, laneIdx - 1)];
-          setLastCommand("izquierda");
-          setMicStatus("Izquierda");
         }
         break;
       case "derecha":
         {
           const laneIdx = pickLaneIndexFromX(playerTargetXRef.current);
           playerTargetXRef.current = LANES[Math.min(LANES.length - 1, laneIdx + 1)];
-          setLastCommand("derecha");
-          setMicStatus("Derecha");
         }
         break;
       case "saltar":
         performJump();
         break;
       case "disparar":
+      case "fuego":
         shootProjectile();
         break;
     }
   };
 
-  const applyVoiceCommand = (transcript: string): string | null => {
-    if (gameStatusRef.current !== "Jugando") return null;
-    const normalized = normalizeSpeech(transcript);
+  const applyVoiceCommand = (fullTranscript: string) => {
+    if (gameStatusRef.current !== "Jugando") return;
+    
+    const normalized = normalizeSpeech(fullTranscript);
+    // Dividimos todo el historial en palabras individuales
+    const words = normalized.split(/\s+/).filter(Boolean);
     const executed: string[] = [];
 
-    if (normalized.includes("saltar")) {
-      executeCommand("saltar");
-      executed.push("saltar");
-    } else if (normalized.includes("izquierda")) {
-      executeCommand("izquierda");
-      executed.push("izquierda");
-    } else if (normalized.includes("derecha")) {
-      executeCommand("derecha");
-      executed.push("derecha");
-    } else if (normalized.includes("disparar") || normalized.includes("fuego")) {
-      executeCommand("disparar");
-      executed.push("disparar");
+    // Solo procesamos las palabras que sean NUEVAS (desde nuestro último índice guardado)
+    for (let i = lastProcessedWordIndexRef.current; i < words.length; i++) {
+      const w = words[i];
+      if (["izquierda", "derecha", "saltar", "disparar", "fuego"].includes(w)) {
+        const cmd = w === "fuego" ? "disparar" : w;
+        executeCommand(cmd);
+        executed.push(cmd);
+        // Avanzamos el índice para NUNCA volver a leer esta misma palabra
+        lastProcessedWordIndexRef.current = i + 1; 
+      }
     }
 
     if (executed.length > 0) {
       setLastCommand(executed.join(", "));
-      return executed.join(", ");
+      setMicStatus(`Comando aplicado: ${executed.join(", ")}`);
     }
-    return null;
   };
 
   const resetGameState = () => {
@@ -369,6 +367,9 @@ export default function VRScene() {
     jumpTimeRemainingRef.current = 0;
     shootCooldownRef.current = 0;
     lastVoiceCommandTimeRef.current = 0;
+    
+    // Reiniciamos el rastreador de palabras
+    lastProcessedWordIndexRef.current = 0;
 
     obstaclesRef.current = [];
     starsRef.current = [];
@@ -415,16 +416,16 @@ export default function VRScene() {
 
       recognition.onresult = (event: RecognitionResultEvent) => {
         let transcript = "";
-        for (let i = event.resultIndex; i < event.results.length; i += 1) {
-          const result = event.results[i];
-          if (result.isFinal) {
-            transcript = result[0]?.transcript?.trim() ?? "";
-            if (transcript) {
-              setLastTranscript(transcript);
-              const executed = applyVoiceCommand(transcript);
-              if (executed) setMicStatus(`Comando aplicado: ${executed}`);
-            }
-          }
+        // Reconstruimos la frase completa desde el índice 0 para asegurarnos 
+        // de que nuestra separación de palabras siempre sea consistente
+        for (let i = 0; i < event.results.length; i += 1) {
+          transcript += event.results[i][0]?.transcript ?? "";
+        }
+        transcript = transcript.trim();
+
+        if (transcript) {
+          setLastTranscript(transcript);
+          applyVoiceCommand(transcript);
         }
       };
 
@@ -477,6 +478,9 @@ export default function VRScene() {
       recognition.onend = () => {
         if (!micActiveRef.current) return;
         try {
+          // Cada vez que el motor de voz se detiene y reinicia internamente,
+          // la frase se borra, por lo que también reiniciamos nuestro índice de palabras
+          lastProcessedWordIndexRef.current = 0; 
           recognition.start();
           micRetryAttemptRef.current = 0;
         } catch {
@@ -491,6 +495,7 @@ export default function VRScene() {
     }
 
     try {
+      lastProcessedWordIndexRef.current = 0;
       recognitionRef.current.start();
       micActiveRef.current = true;
       setMicEnabled(true);
@@ -511,6 +516,7 @@ export default function VRScene() {
     setGameStatus("Esperando");
     setMicStatus("Micrófono desactivado. Actívalo para jugar.");
     micRetryAttemptRef.current = 0;
+    lastProcessedWordIndexRef.current = 0;
     if (micRetryTimeoutRef.current) {
       window.clearTimeout(micRetryTimeoutRef.current);
       micRetryTimeoutRef.current = null;
@@ -1038,7 +1044,6 @@ export default function VRScene() {
               {!micEnabled && " Activa el micrófono para comenzar."}
             </p>
 
-            {/* MODIFICACIÓN: Mensaje de Game Over dentro del panel principal */}
             {lives === 0 && (
               <div style={{
                 marginTop: 12,
@@ -1068,7 +1073,6 @@ export default function VRScene() {
             )}
           </div>
 
-          {/* OVERLAY GAME OVER A PANTALLA COMPLETA */}
           {gameStatus === "Game Over" && (
             <div
               style={{
@@ -1082,9 +1086,9 @@ export default function VRScene() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                zIndex: 9999, // Aseguramos que tape ABSOLUTAMENTE todo
+                zIndex: 9999, 
                 animation: "fadeIn 0.3s ease-out",
-                fontFamily: "'Courier New', Courier, monospace", // Toque retro/pixel
+                fontFamily: "'Courier New', Courier, monospace", 
               }}
             >
               <div
@@ -1093,7 +1097,7 @@ export default function VRScene() {
                   padding: "50px 70px",
                   textAlign: "center",
                   border: "6px solid #ff3366",
-                  boxShadow: "10px 10px 0px rgba(255, 51, 102, 0.4)", // Sombra estilo bloque/voxel
+                  boxShadow: "10px 10px 0px rgba(255, 51, 102, 0.4)", 
                 }}
               >
                 <h1
