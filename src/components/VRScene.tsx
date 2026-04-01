@@ -76,17 +76,20 @@ const STAR_DESPAWN_Z = 6;
 const STAR_SIZE = 0.85;
 
 const SPAWN_EVERY_MS = 900;
-const BASE_SPEED = 6.5;
-const SPEED_RAMP_PER_SEC = 0.22;
+const BASE_SPEED = 4.5;               // Más lento
+const SPEED_RAMP_PER_SEC = 0.12;      // Rampa más suave
 
 const MAX_LIVES = 5;
-const HIT_COOLDOWN_SEC = 0.3; // Reducido para mayor fluidez
+const HIT_COOLDOWN_SEC = 0.3;
 
 const JUMP_DURATION = 0.4;
-const JUMP_HEIGHT = 1.2;
+const JUMP_HEIGHT = 2.5;
 
-const PLAYER_COLOR_NORMAL = "#3b82f6";
-const PLAYER_COLOR_HIT = "#60a5fa";
+// Colores estilo Blade Runner (neón)
+const PLAYER_COLOR_NORMAL = "#00ccff";
+const PLAYER_COLOR_HIT = "#88ddff";
+const OBSTACLE_COLOR = "#ff3366";
+const STAR_COLOR = "#ffcc33";
 
 function normalizeSpeech(text: string): string {
   return text
@@ -130,13 +133,11 @@ export default function VRScene() {
     gameStatusRef.current = gameStatus;
   }, [gameStatus]);
 
-  // Usamos refs para obstáculos y estrellas para evitar re-renderizados constantes
+  // Refs para evitar re-renderizados innecesarios
   const obstaclesRef = useRef<Obstacle[]>([]);
   const starsRef = useRef<Star[]>([]);
-  // Solo usamos el estado para forzar render cuando cambia la longitud o contenido
   const [obstaclesVersion, setObstaclesVersion] = useState(0);
   const [starsVersion, setStarsVersion] = useState(0);
-  // Para poder acceder a la versión actual en los callbacks
   const obstaclesVersionRef = useRef(obstaclesVersion);
   const starsVersionRef = useRef(starsVersion);
   useEffect(() => {
@@ -207,7 +208,7 @@ export default function VRScene() {
     }
 
     const setPlayerColor = (color: string) => {
-      player.setAttribute("material", `color: ${color}; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3`);
+      player.setAttribute("material", `color: ${color}; emissive: #0088aa; metalness: 0.8; roughness: 0.2`);
     };
 
     setPlayerColor(PLAYER_COLOR_HIT);
@@ -255,7 +256,6 @@ export default function VRScene() {
   };
 
   const resetGameState = () => {
-    // Limpiar timeouts pendientes
     if (vibrationTimeoutRef.current) {
       window.clearTimeout(vibrationTimeoutRef.current);
       vibrationTimeoutRef.current = null;
@@ -275,7 +275,6 @@ export default function VRScene() {
     hitCooldownRef.current = 0;
     jumpTimeRemainingRef.current = 0;
 
-    // Reiniciar listas de objetos
     obstaclesRef.current = [];
     starsRef.current = [];
     setObstaclesVersion(v => v + 1);
@@ -291,7 +290,7 @@ export default function VRScene() {
       playerEl.object3D.position.y = PLAYER_Y_BASE;
       playerEl.object3D.position.z = PLAYER_Z;
       playerEl.object3D.scale.set(1, 1, 1);
-      playerEl.setAttribute("material", `color: ${PLAYER_COLOR_NORMAL}; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3`);
+      playerEl.setAttribute("material", `color: ${PLAYER_COLOR_NORMAL}; emissive: #0088aa; metalness: 0.8; roughness: 0.2`);
     }
   };
 
@@ -309,7 +308,7 @@ export default function VRScene() {
     if (!recognitionRef.current) {
       const recognition = new RecognitionCtor();
       recognition.continuous = true;
-      recognition.interimResults = true; // <-- Habilitado para respuesta más rápida
+      recognition.interimResults = true;
       recognition.lang = "es-MX";
 
       recognition.onresult = (event: RecognitionResultEvent) => {
@@ -317,9 +316,7 @@ export default function VRScene() {
         for (let i = event.resultIndex; i < event.results.length; i += 1) {
           const result = event.results[i];
           transcript = result[0]?.transcript?.trim() ?? "";
-          // Procesamos cada resultado (tanto provisional como final)
           if (transcript) {
-            console.log("[onresult] transcript:", transcript, "final:", result.isFinal);
             setLastTranscript(transcript);
             const executed = applyVoiceCommand(transcript);
             if (executed) setMicStatus(`Comando aplicado: ${executed}`);
@@ -429,7 +426,7 @@ export default function VRScene() {
     }
   };
 
-  // Bucle principal del juego (optimizado con refs para evitar re-renders)
+  // Bucle principal
   useEffect(() => {
     if (!aframeLoaded) return;
 
@@ -470,7 +467,7 @@ export default function VRScene() {
         }
       }
 
-      // Spawn de obstáculos
+      // Spawn obstáculos
       spawnTimerMsRef.current += dt * 1000;
       if (spawnTimerMsRef.current >= SPAWN_EVERY_MS) {
         spawnTimerMsRef.current = 0;
@@ -483,7 +480,7 @@ export default function VRScene() {
         setObstaclesVersion(v => v + 1);
       }
 
-      // Spawn de estrellas
+      // Spawn estrellas
       starSpawnTimerMsRef.current += dt * 1000;
       if (starSpawnTimerMsRef.current >= 2600) {
         starSpawnTimerMsRef.current = 0;
@@ -495,7 +492,7 @@ export default function VRScene() {
         }
       }
 
-      // Movimiento suave del jugador
+      // Movimiento jugador
       const playerEl = playerElRef.current;
       if (playerEl?.object3D) {
         const target = Math.min(laneBounds.maxX, Math.max(laneBounds.minX, playerTargetXRef.current));
@@ -514,7 +511,7 @@ export default function VRScene() {
       let hitOccurred = false;
       let starCollected = false;
 
-      // Procesar obstáculos (actualizar posiciones y detectar colisiones)
+      // Procesar obstáculos
       const newObstacles: Obstacle[] = [];
       for (const o of obstaclesRef.current) {
         const newZ = o.z + speed * dt;
@@ -531,7 +528,7 @@ export default function VRScene() {
 
           if (colliding && !hitOccurred && hitCooldownRef.current <= 0) {
             hitOccurred = true;
-            // No agregar este obstáculo (se elimina)
+            // no agregar
           } else {
             newObstacles.push({ ...o, z: newZ });
           }
@@ -556,7 +553,7 @@ export default function VRScene() {
 
           if (colliding && !hitOccurred && !starCollected && hitCooldownRef.current <= 0) {
             starCollected = true;
-            // No agregar esta estrella (se recolecta)
+            // no agregar
           } else {
             newStars.push({ ...s, z: newZ });
           }
@@ -564,7 +561,7 @@ export default function VRScene() {
       }
       starsRef.current = newStars;
 
-      // Aplicar efectos de colisión / recolección (solo si cooldown está libre)
+      // Aplicar efectos
       if (hitCooldownRef.current <= 0) {
         if (hitOccurred) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
@@ -574,7 +571,6 @@ export default function VRScene() {
             if (newLives === 0) {
               setGameStatus("Game Over");
               setMicStatus("¡Game Over! Perdiste todas tus vidas.");
-              // Detener micrófono automáticamente
               stopMicrophone();
             } else {
               setMicStatus(`¡Choque! Te quedan ${newLives} vidas.`);
@@ -588,7 +584,6 @@ export default function VRScene() {
         }
       }
 
-      // Si hubo cambios en las listas, forzamos la actualización del estado para que React renderice los nuevos elementos
       if (obstaclesRef.current.length !== obstaclesVersionRef.current) {
         setObstaclesVersion(v => v + 1);
       }
@@ -606,7 +601,6 @@ export default function VRScene() {
     };
   }, [aframeLoaded, gameStatus, micEnabled, laneBounds.maxX, laneBounds.minX]);
 
-  // Liberar recursos al desmontar
   useEffect(() => {
     return () => {
       micActiveRef.current = false;
@@ -627,7 +621,6 @@ export default function VRScene() {
     };
   }, []);
 
-  // Renderizado de obstáculos usando la versión actual
   const renderObstacle = (o: Obstacle) => {
     let geometryStr = "";
     switch (o.shape) {
@@ -651,12 +644,11 @@ export default function VRScene() {
         }}
         position={`${o.laneX} ${OBSTACLE_Y} ${o.z}`}
         geometry={geometryStr}
-        material="color: #ef4444; emissive: #3b0606; metalness: 0.05; roughness: 0.55"
+        material={`color: ${OBSTACLE_COLOR}; emissive: #cc1155; metalness: 0.5; roughness: 0.3`}
       />
     );
   };
 
-  // Para forzar render cuando cambie la versión, obtenemos los arrays actuales
   const obstaclesToRender = obstaclesRef.current;
   const starsToRender = starsRef.current;
 
@@ -673,22 +665,30 @@ export default function VRScene() {
           <a-scene
             embedded
             renderer="antialias: true; colorManagement: true"
-            fog="type: exponential; color: #0b1020; density: 0.055"
+            fog="type: exponential; color: #0a0a2a; density: 0.04"
             style={{ width: "100%", height: "100%" }}
           >
             <a-assets></a-assets>
-            <a-sky color="#0b1020"></a-sky>
-            <a-entity light="type: ambient; intensity: 0.65; color: #bcd7ff"></a-entity>
+            <a-sky color="#0a0a2a"></a-sky>
+
+            {/* Luces estilo Blade Runner */}
+            <a-entity light="type: ambient; intensity: 0.4; color: #4455aa"></a-entity>
             <a-entity
-              light="type: directional; intensity: 1.15; color: #ffffff"
+              light="type: directional; intensity: 1.2; color: #ffaa88"
               position="6 10 6"
             ></a-entity>
+            <a-entity
+              light="type: point; intensity: 0.8; color: #ff44aa; distance: 12; decay: 1"
+              position="0 3 0"
+            ></a-entity>
+
+            {/* Suelo oscuro con acabado metálico */}
             <a-plane
               position="0 0 -10"
               rotation="-90 0 0"
               width="26"
               height="120"
-              material="color: #0e1b2e; metalness: 0.05; roughness: 0.95"
+              material="color: #112233; metalness: 0.1; roughness: 0.9"
             ></a-plane>
 
             <a-entity
@@ -698,7 +698,7 @@ export default function VRScene() {
               }}
               position={`0 ${PLAYER_Y_BASE} ${PLAYER_Z}`}
               geometry={`primitive: sphere; radius: ${PLAYER_RADIUS}`}
-              material={`color: ${PLAYER_COLOR_NORMAL}; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3`}
+              material={`color: ${PLAYER_COLOR_NORMAL}; emissive: #0088aa; metalness: 0.8; roughness: 0.2`}
             ></a-entity>
 
             {obstaclesToRender.map(o => renderObstacle(o))}
@@ -712,7 +712,7 @@ export default function VRScene() {
                 }}
                 position={`${s.laneX} ${STAR_Y} ${s.z}`}
                 geometry="primitive: octahedron; radius: 0.6"
-                material="color: #facc15; emissive: #a16207; metalness: 0.15; roughness: 0.25"
+                material={`color: ${STAR_COLOR}; emissive: #ffaa00; metalness: 0.2; roughness: 0.1`}
                 animation="property: rotation; to: 0 360 0; loop: true; dur: 1000; easing: linear"
               ></a-entity>
             ))}
