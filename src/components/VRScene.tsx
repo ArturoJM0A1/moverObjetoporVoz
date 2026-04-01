@@ -57,6 +57,14 @@ type Star = {
   z: number;
 };
 
+// Nuevo tipo para las Pirámides
+type Pyramid = {
+  id: string;
+  laneX: number;
+  size: number;
+  z: number;
+};
+
 type Projectile = {
   id: string;
   x: number;
@@ -82,6 +90,14 @@ const STAR_SPAWN_Z = -40;
 const STAR_DESPAWN_Z = 6;
 const STAR_SIZE = 0.85;
 
+// Constantes de las Pirámides
+const PYRAMID_Y = 1.0;
+const PYRAMID_SPAWN_Z = -40;
+const PYRAMID_DESPAWN_Z = 6;
+const PYRAMID_SIZE = 0.8;
+const PYRAMID_AMMO_BONUS = 6;
+const START_AMMO = 12;
+
 const SPAWN_EVERY_MS = 900;
 const BASE_SPEED = 4.5;
 const SPEED_RAMP_PER_SEC = 0.12;
@@ -98,6 +114,7 @@ const PLAYER_COLOR_HIT = "#ffffff";
 const OBSTACLE_COLOR = "#ff44cc";
 const STAR_COLOR = "#ffdd77";
 const PROJECTILE_COLOR = "#ff3333";
+const PYRAMID_COLOR = "#33ff55"; // Verde tóxico para munición
 
 function normalizeSpeech(text: string): string {
   return text
@@ -133,6 +150,9 @@ export default function VRScene() {
   const [gameStatus, setGameStatus] = useState<"Esperando" | "Jugando" | "Game Over">("Esperando");
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(MAX_LIVES);
+  const [ammo, setAmmo] = useState(START_AMMO); // Estado de proyectiles
+  const ammoRef = useRef(START_AMMO);           // Ref sincronizada para el loop
+
   const [lastCommand, setLastCommand] = useState("-");
   const [lastTranscript, setLastTranscript] = useState("-");
 
@@ -143,31 +163,34 @@ export default function VRScene() {
 
   const obstaclesRef = useRef<Obstacle[]>([]);
   const starsRef = useRef<Star[]>([]);
+  const pyramidsRef = useRef<Pyramid[]>([]); // Ref de Pirámides
   const projectilesRef = useRef<Projectile[]>([]);
+  
   const [obstaclesVersion, setObstaclesVersion] = useState(0);
   const [starsVersion, setStarsVersion] = useState(0);
+  const [pyramidsVersion, setPyramidsVersion] = useState(0); // Version de pirámides
   const [projectilesVersion, setProjectilesVersion] = useState(0);
+  
   const obstaclesVersionRef = useRef(obstaclesVersion);
   const starsVersionRef = useRef(starsVersion);
+  const pyramidsVersionRef = useRef(pyramidsVersion);
   const projectilesVersionRef = useRef(projectilesVersion);
-  useEffect(() => {
-    obstaclesVersionRef.current = obstaclesVersion;
-  }, [obstaclesVersion]);
-  useEffect(() => {
-    starsVersionRef.current = starsVersion;
-  }, [starsVersion]);
-  useEffect(() => {
-    projectilesVersionRef.current = projectilesVersion;
-  }, [projectilesVersion]);
+  
+  useEffect(() => { obstaclesVersionRef.current = obstaclesVersion; }, [obstaclesVersion]);
+  useEffect(() => { starsVersionRef.current = starsVersion; }, [starsVersion]);
+  useEffect(() => { pyramidsVersionRef.current = pyramidsVersion; }, [pyramidsVersion]);
+  useEffect(() => { projectilesVersionRef.current = projectilesVersion; }, [projectilesVersion]);
 
   const obstacleElsRef = useRef(new Map<string, HTMLElement>());
   const starElsRef = useRef(new Map<string, HTMLElement>());
+  const pyramidElsRef = useRef(new Map<string, HTMLElement>()); // Elementos de las Pirámides
   const playerElRef = useRef<AFrameEntity | null>(null);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameMsRef = useRef<number | null>(null);
   const spawnTimerMsRef = useRef(0);
   const starSpawnTimerMsRef = useRef(0);
+  const pyramidSpawnTimerMsRef = useRef(0); // Timer de Pirámides
   const aliveSecondsRef = useRef(0);
   const hitCooldownRef = useRef(0);
 
@@ -179,7 +202,6 @@ export default function VRScene() {
   const jumpTimeRemainingRef = useRef(0);
   const shootCooldownRef = useRef(0);
 
-  // Cooldown para comandos de voz (evita duplicados)
   const lastVoiceCommandTimeRef = useRef(0);
 
   const supportsSpeech =
@@ -247,6 +269,16 @@ export default function VRScene() {
     if (gameStatusRef.current !== "Jugando") return;
     if (shootCooldownRef.current > 0) return;
 
+    // Validación de munición antes de disparar
+    if (ammoRef.current <= 0) {
+      setMicStatus("Necesitas proyectiles");
+      return;
+    }
+
+    // Gasto de munición (directo y estado)
+    ammoRef.current -= 1;
+    setAmmo(ammoRef.current);
+
     const playerX = playerXRef.current;
     const id = `proj-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     projectilesRef.current.push({
@@ -261,10 +293,9 @@ export default function VRScene() {
     setMicStatus("¡Disparaste!");
   };
 
-  // Función auxiliar para ejecutar comandos con cooldown global
   const executeCommand = (command: string) => {
     const now = Date.now();
-    if (now - lastVoiceCommandTimeRef.current < 200) return; // cooldown de 200ms
+    if (now - lastVoiceCommandTimeRef.current < 200) return; 
     lastVoiceCommandTimeRef.current = now;
 
     switch (command) {
@@ -298,7 +329,6 @@ export default function VRScene() {
     const normalized = normalizeSpeech(transcript);
     const executed: string[] = [];
 
-    // Buscar comandos en orden, pero ejecutar solo el primero con cooldown global
     if (normalized.includes("saltar")) {
       executeCommand("saltar");
       executed.push("saltar");
@@ -332,10 +362,16 @@ export default function VRScene() {
 
     setScore(0);
     setLives(MAX_LIVES);
+    
+    // Reiniciar munición a valor inicial
+    ammoRef.current = START_AMMO;
+    setAmmo(START_AMMO);
+
     setLastCommand("-");
     aliveSecondsRef.current = 0;
     spawnTimerMsRef.current = 0;
     starSpawnTimerMsRef.current = 0;
+    pyramidSpawnTimerMsRef.current = 0; // Reiniciar timer de pirámides
     lastFrameMsRef.current = null;
     hitCooldownRef.current = 0;
     jumpTimeRemainingRef.current = 0;
@@ -344,12 +380,17 @@ export default function VRScene() {
 
     obstaclesRef.current = [];
     starsRef.current = [];
+    pyramidsRef.current = []; // Reiniciar pirámides
     projectilesRef.current = [];
+    
     setObstaclesVersion(v => v + 1);
     setStarsVersion(v => v + 1);
+    setPyramidsVersion(v => v + 1);
     setProjectilesVersion(v => v + 1);
+    
     obstacleElsRef.current.clear();
     starElsRef.current.clear();
+    pyramidElsRef.current.clear();
 
     playerTargetXRef.current = 0;
     playerXRef.current = 0;
@@ -384,7 +425,6 @@ export default function VRScene() {
         let transcript = "";
         for (let i = event.resultIndex; i < event.results.length; i += 1) {
           const result = event.results[i];
-          // Solo procesar resultados finales para evitar duplicados
           if (result.isFinal) {
             transcript = result[0]?.transcript?.trim() ?? "";
             if (transcript) {
@@ -398,7 +438,6 @@ export default function VRScene() {
 
       recognition.onerror = (event: { error?: string }) => {
         const errorCode = event.error ?? "desconocido";
-        console.log("[onerror] error:", errorCode);
 
         if (errorCode === "not-allowed") {
           setMicStatus("Permiso denegado. Habilita el micrófono en el navegador.");
@@ -434,7 +473,7 @@ export default function VRScene() {
               recognitionRef.current.start();
               setMicStatus("Escuchando comandos de voz...");
             } catch {
-              // onend/onerror volverá a disparar
+              // onend/onerror
             }
           }, delayMs);
           return;
@@ -498,7 +537,6 @@ export default function VRScene() {
     }
   };
 
-  // Bucle principal (sin cambios, omito por brevedad, pero está completo en la respuesta final)
   useEffect(() => {
     if (!aframeLoaded) return;
 
@@ -552,7 +590,7 @@ export default function VRScene() {
         setObstaclesVersion(v => v + 1);
       }
 
-      // Spawn estrellas
+      // Spawn estrellas (Vidas)
       starSpawnTimerMsRef.current += dt * 1000;
       if (starSpawnTimerMsRef.current >= 2600) {
         starSpawnTimerMsRef.current = 0;
@@ -561,6 +599,18 @@ export default function VRScene() {
           const id = `s-${nowMs.toFixed(0)}-${Math.random().toString(16).slice(2)}`;
           starsRef.current.push({ id, laneX, size: STAR_SIZE, z: STAR_SPAWN_Z });
           setStarsVersion(v => v + 1);
+        }
+      }
+
+      // Spawn pirámides (Munición) - Cada 4.5 segundos aprox.
+      pyramidSpawnTimerMsRef.current += dt * 1000;
+      if (pyramidSpawnTimerMsRef.current >= 4500) {
+        pyramidSpawnTimerMsRef.current = 0;
+        if (Math.random() < 0.7) { // 70% probabilidad
+          const laneX = LANES[Math.floor(Math.random() * LANES.length)];
+          const id = `p-${nowMs.toFixed(0)}-${Math.random().toString(16).slice(2)}`;
+          pyramidsRef.current.push({ id, laneX, size: PYRAMID_SIZE, z: PYRAMID_SPAWN_Z });
+          setPyramidsVersion(v => v + 1);
         }
       }
 
@@ -582,8 +632,9 @@ export default function VRScene() {
 
       let hitOccurred = false;
       let starCollected = false;
+      let pyramidCollected = false;
 
-      // Proyectiles
+      // Proyectiles (Lógica de choque con obstáculos)
       const newProjectiles: Projectile[] = [];
       const destroyedObstacleIds = new Set<string>();
 
@@ -619,7 +670,7 @@ export default function VRScene() {
         setProjectilesVersion(v => v + 1);
       }
 
-      // Obstáculos
+      // Colisiones - Obstáculos
       const newObstacles: Obstacle[] = [];
       for (const o of obstaclesRef.current) {
         const newZ = o.z + speed * dt;
@@ -643,7 +694,7 @@ export default function VRScene() {
       }
       obstaclesRef.current = newObstacles;
 
-      // Estrellas
+      // Colisiones - Estrellas
       const newStars: Star[] = [];
       for (const s of starsRef.current) {
         const newZ = s.z + speed * dt;
@@ -667,7 +718,31 @@ export default function VRScene() {
       }
       starsRef.current = newStars;
 
-      // Aplicar efectos
+      // Colisiones - Pirámides
+      const newPyramids: Pyramid[] = [];
+      for (const p of pyramidsRef.current) {
+        const newZ = p.z + speed * dt;
+        const el = pyramidElsRef.current.get(p.id) as AFrameEntity | undefined;
+        if (el?.object3D) el.object3D.position.z = newZ;
+
+        if (newZ <= PYRAMID_DESPAWN_Z) {
+          const half = p.size / 2;
+          const dz = Math.abs(newZ - PLAYER_Z);
+          const dx = Math.abs(p.laneX - playerX);
+          const dy = Math.abs(PYRAMID_Y - (PLAYER_Y_BASE + jumpOffsetY));
+          const radiusSum = playerHalf + half;
+          const colliding = (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum);
+
+          if (colliding && !hitOccurred && !pyramidCollected && hitCooldownRef.current <= 0) {
+            pyramidCollected = true;
+          } else {
+            newPyramids.push({ ...p, z: newZ });
+          }
+        }
+      }
+      pyramidsRef.current = newPyramids;
+
+      // Aplicar efectos según colisión
       if (hitCooldownRef.current <= 0) {
         if (hitOccurred) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
@@ -687,6 +762,11 @@ export default function VRScene() {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
           setLives(prev => Math.min(MAX_LIVES, prev + 1));
           setMicStatus("¡Recogiste una estrella! +1 vida.");
+        } else if (pyramidCollected) {
+          hitCooldownRef.current = HIT_COOLDOWN_SEC;
+          ammoRef.current += PYRAMID_AMMO_BONUS;
+          setAmmo(ammoRef.current);
+          setMicStatus(`¡Recogiste una pirámide! +${PYRAMID_AMMO_BONUS} proyectiles.`);
         }
       }
 
@@ -695,6 +775,9 @@ export default function VRScene() {
       }
       if (starsRef.current.length !== starsVersionRef.current) {
         setStarsVersion(v => v + 1);
+      }
+      if (pyramidsRef.current.length !== pyramidsVersionRef.current) {
+        setPyramidsVersion(v => v + 1);
       }
     };
 
@@ -707,7 +790,6 @@ export default function VRScene() {
     };
   }, [aframeLoaded, gameStatus, micEnabled, laneBounds.maxX, laneBounds.minX]);
 
-  // Escucha de teclado para disparar con 'w'
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'w' || e.key === 'W') {
@@ -778,6 +860,7 @@ export default function VRScene() {
 
   const obstaclesToRender = obstaclesRef.current;
   const starsToRender = starsRef.current;
+  const pyramidsToRender = pyramidsRef.current;
   const projectilesToRender = projectilesRef.current;
 
   return (
@@ -845,9 +928,24 @@ export default function VRScene() {
                 animation="property: rotation; to: 0 360 0; loop: true; dur: 1000; easing: linear"
               ></a-entity>
             ))}
+            
+            {/* Renderizado de las Pirámides (conos de 4 lados para geometría piramidal / voxel vibe) */}
+            {pyramidsToRender.map(p => (
+              <a-entity
+                key={p.id}
+                ref={(el: HTMLElement | null) => {
+                  if (el) pyramidElsRef.current.set(p.id, el);
+                  else pyramidElsRef.current.delete(p.id);
+                }}
+                position={`${p.laneX} ${PYRAMID_Y} ${p.z}`}
+                geometry={`primitive: cone; radiusBottom: ${p.size / 2}; radiusTop: 0; segmentsRadial: 4`}
+                material={`color: ${PYRAMID_COLOR}; emissive: #11aa33; metalness: 0.3; roughness: 0.2`}
+                animation="property: rotation; to: 0 360 0; loop: true; dur: 1500; easing: linear"
+              ></a-entity>
+            ))}
+
             {projectilesToRender.map(p => renderProjectile(p))}
 
-            {/* Cámara elevada para mejor visibilidad */}
             <a-entity camera look-controls position="0 2.2 0"></a-entity>
           </a-scene>
 
@@ -921,6 +1019,14 @@ export default function VRScene() {
                 </strong>
               </div>
 
+              {/* HUD Proyectiles */}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <span style={{ opacity: 0.85 }}>Proyectiles</span>
+                <strong style={{ color: ammo > 0 ? "#60a5fa" : "#fca5a5" }}>
+                  {ammo}
+                </strong>
+              </div>
+
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ opacity: 0.85 }}>Puntuación</span>
                 <strong>{score}</strong>
@@ -932,7 +1038,7 @@ export default function VRScene() {
               </div>
             </div>
 
-            <p style={{ margin: "10px 0 6px" }}>{micStatus}</p>
+            <p style={{ margin: "10px 0 6px", color: ammo === 0 ? "#ff9999" : "inherit" }}>{micStatus}</p>
             <p style={{ margin: "6px 0", fontSize: 13 }}>Último texto: {lastTranscript}</p>
             <p style={{ margin: "6px 0", fontSize: 12, opacity: 0.9 }}>
               Di: <strong>izquierda</strong>, <strong>derecha</strong>, <strong>saltar</strong> o <strong>disparar</strong>.
