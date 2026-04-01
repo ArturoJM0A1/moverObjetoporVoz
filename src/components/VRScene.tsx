@@ -57,7 +57,6 @@ type Star = {
   z: number;
 };
 
-// Nuevo tipo para las Pirámides
 type Pyramid = {
   id: string;
   laneX: number;
@@ -90,7 +89,6 @@ const STAR_SPAWN_Z = -40;
 const STAR_DESPAWN_Z = 6;
 const STAR_SIZE = 0.85;
 
-// Constantes de las Pirámides
 const PYRAMID_Y = 1.0;
 const PYRAMID_SPAWN_Z = -40;
 const PYRAMID_DESPAWN_Z = 6;
@@ -108,13 +106,12 @@ const HIT_COOLDOWN_SEC = 0.3;
 const JUMP_DURATION = 0.4;
 const JUMP_HEIGHT = 2.5;
 
-// Colores estilo neón elegante
 const PLAYER_COLOR_NORMAL = "#4affff";
 const PLAYER_COLOR_HIT = "#ffffff";
 const OBSTACLE_COLOR = "#ff44cc";
 const STAR_COLOR = "#ffdd77";
 const PROJECTILE_COLOR = "#ff3333";
-const PYRAMID_COLOR = "#33ff55"; // Verde tóxico para munición
+const PYRAMID_COLOR = "#33ff55"; 
 
 function normalizeSpeech(text: string): string {
   return text
@@ -150,8 +147,8 @@ export default function VRScene() {
   const [gameStatus, setGameStatus] = useState<"Esperando" | "Jugando" | "Game Over">("Esperando");
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(MAX_LIVES);
-  const [ammo, setAmmo] = useState(START_AMMO); // Estado de proyectiles
-  const ammoRef = useRef(START_AMMO);           // Ref sincronizada para el loop
+  const [ammo, setAmmo] = useState(START_AMMO); 
+  const ammoRef = useRef(START_AMMO);           
 
   const [lastCommand, setLastCommand] = useState("-");
   const [lastTranscript, setLastTranscript] = useState("-");
@@ -163,12 +160,12 @@ export default function VRScene() {
 
   const obstaclesRef = useRef<Obstacle[]>([]);
   const starsRef = useRef<Star[]>([]);
-  const pyramidsRef = useRef<Pyramid[]>([]); // Ref de Pirámides
+  const pyramidsRef = useRef<Pyramid[]>([]); 
   const projectilesRef = useRef<Projectile[]>([]);
   
   const [obstaclesVersion, setObstaclesVersion] = useState(0);
   const [starsVersion, setStarsVersion] = useState(0);
-  const [pyramidsVersion, setPyramidsVersion] = useState(0); // Version de pirámides
+  const [pyramidsVersion, setPyramidsVersion] = useState(0); 
   const [projectilesVersion, setProjectilesVersion] = useState(0);
   
   const obstaclesVersionRef = useRef(obstaclesVersion);
@@ -183,14 +180,14 @@ export default function VRScene() {
 
   const obstacleElsRef = useRef(new Map<string, HTMLElement>());
   const starElsRef = useRef(new Map<string, HTMLElement>());
-  const pyramidElsRef = useRef(new Map<string, HTMLElement>()); // Elementos de las Pirámides
+  const pyramidElsRef = useRef(new Map<string, HTMLElement>()); 
   const playerElRef = useRef<AFrameEntity | null>(null);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameMsRef = useRef<number | null>(null);
   const spawnTimerMsRef = useRef(0);
   const starSpawnTimerMsRef = useRef(0);
-  const pyramidSpawnTimerMsRef = useRef(0); // Timer de Pirámides
+  const pyramidSpawnTimerMsRef = useRef(0); 
   const aliveSecondsRef = useRef(0);
   const hitCooldownRef = useRef(0);
 
@@ -269,13 +266,11 @@ export default function VRScene() {
     if (gameStatusRef.current !== "Jugando") return;
     if (shootCooldownRef.current > 0) return;
 
-    // Validación de munición antes de disparar
     if (ammoRef.current <= 0) {
       setMicStatus("Necesitas proyectiles");
       return;
     }
 
-    // Gasto de munición (directo y estado)
     ammoRef.current -= 1;
     setAmmo(ammoRef.current);
 
@@ -362,16 +357,13 @@ export default function VRScene() {
 
     setScore(0);
     setLives(MAX_LIVES);
-    
-    // Reiniciar munición a valor inicial
     ammoRef.current = START_AMMO;
     setAmmo(START_AMMO);
-
     setLastCommand("-");
     aliveSecondsRef.current = 0;
     spawnTimerMsRef.current = 0;
     starSpawnTimerMsRef.current = 0;
-    pyramidSpawnTimerMsRef.current = 0; // Reiniciar timer de pirámides
+    pyramidSpawnTimerMsRef.current = 0; 
     lastFrameMsRef.current = null;
     hitCooldownRef.current = 0;
     jumpTimeRemainingRef.current = 0;
@@ -380,7 +372,7 @@ export default function VRScene() {
 
     obstaclesRef.current = [];
     starsRef.current = [];
-    pyramidsRef.current = []; // Reiniciar pirámides
+    pyramidsRef.current = []; 
     projectilesRef.current = [];
     
     setObstaclesVersion(v => v + 1);
@@ -473,7 +465,7 @@ export default function VRScene() {
               recognitionRef.current.start();
               setMicStatus("Escuchando comandos de voz...");
             } catch {
-              // onend/onerror
+              // silencioso en error
             }
           }, delayMs);
           return;
@@ -602,11 +594,11 @@ export default function VRScene() {
         }
       }
 
-      // Spawn pirámides (Munición) - Cada 4.5 segundos aprox.
+      // Spawn pirámides (Munición)
       pyramidSpawnTimerMsRef.current += dt * 1000;
       if (pyramidSpawnTimerMsRef.current >= 4500) {
         pyramidSpawnTimerMsRef.current = 0;
-        if (Math.random() < 0.7) { // 70% probabilidad
+        if (Math.random() < 0.7) { 
           const laneX = LANES[Math.floor(Math.random() * LANES.length)];
           const id = `p-${nowMs.toFixed(0)}-${Math.random().toString(16).slice(2)}`;
           pyramidsRef.current.push({ id, laneX, size: PYRAMID_SIZE, z: PYRAMID_SPAWN_Z });
@@ -634,7 +626,7 @@ export default function VRScene() {
       let starCollected = false;
       let pyramidCollected = false;
 
-      // Proyectiles (Lógica de choque con obstáculos)
+      // Proyectiles y colisión con obstáculos
       const newProjectiles: Projectile[] = [];
       const destroyedObstacleIds = new Set<string>();
 
@@ -742,7 +734,7 @@ export default function VRScene() {
       }
       pyramidsRef.current = newPyramids;
 
-      // Aplicar efectos según colisión
+      // Efectos según colisión
       if (hitCooldownRef.current <= 0) {
         if (hitOccurred) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
@@ -872,7 +864,7 @@ export default function VRScene() {
       />
 
       {aframeLoaded ? (
-        <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+        <div style={{ width: "100vw", height: "100vh", position: "relative", overflow: "hidden" }}>
           <a-scene
             embedded
             renderer="antialias: true; colorManagement: true"
@@ -929,7 +921,6 @@ export default function VRScene() {
               ></a-entity>
             ))}
             
-            {/* Renderizado de las Pirámides (conos de 4 lados para geometría piramidal / voxel vibe) */}
             {pyramidsToRender.map(p => (
               <a-entity
                 key={p.id}
@@ -963,6 +954,7 @@ export default function VRScene() {
               backdropFilter: "blur(6px)",
               border: "1px solid rgba(255, 255, 255, 0.2)",
               boxShadow: "0 4px 15px rgba(0,0,0,0.5)",
+              zIndex: 10,
             }}
           >
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1019,7 +1011,6 @@ export default function VRScene() {
                 </strong>
               </div>
 
-              {/* HUD Proyectiles */}
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ opacity: 0.85 }}>Proyectiles</span>
                 <strong style={{ color: ammo > 0 ? "#60a5fa" : "#fca5a5" }}>
@@ -1047,93 +1038,91 @@ export default function VRScene() {
             </p>
           </div>
 
+          {/* OVERLAY GAME OVER A PANTALLA COMPLETA */}
           {gameStatus === "Game Over" && (
             <div
               style={{
                 position: "absolute",
                 top: 0,
                 left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: "rgba(0, 0, 0, 0.85)",
-                backdropFilter: "blur(8px)",
+                width: "100vw",
+                height: "100vh",
+                backgroundColor: "rgba(10, 5, 20, 0.92)",
+                backdropFilter: "blur(12px)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                zIndex: 1000,
-                animation: "fadeIn 0.5s ease-out",
+                zIndex: 9999, // Aseguramos que tape ABSOLUTAMENTE todo
+                animation: "fadeIn 0.3s ease-out",
+                fontFamily: "'Courier New', Courier, monospace", // Toque retro/pixel
               }}
             >
               <div
                 style={{
-                  background: "linear-gradient(135deg, #1a0f2a, #0a0618)",
-                  borderRadius: "32px",
-                  padding: "40px 60px",
+                  background: "#110b1a",
+                  padding: "50px 70px",
                   textAlign: "center",
-                  border: "2px solid #ff3366",
-                  boxShadow: "0 0 60px rgba(255, 51, 102, 0.8), inset 0 0 20px rgba(255, 51, 102, 0.3)",
-                  fontFamily: "monospace",
+                  border: "6px solid #ff3366",
+                  boxShadow: "10px 10px 0px rgba(255, 51, 102, 0.4)", // Sombra estilo bloque/voxel
                 }}
               >
-                <div
+                <h1
                   style={{
-                    fontSize: "4rem",
-                    fontWeight: "bold",
+                    fontSize: "clamp(3rem, 8vw, 6rem)",
+                    fontWeight: "900",
                     color: "#ff3366",
-                    textShadow: "0 0 10px #ff3366, 0 0 20px #ff3366",
+                    textShadow: "4px 4px 0px #550011",
                     letterSpacing: "4px",
-                    marginBottom: "20px",
+                    margin: "0 0 20px 0",
+                    textTransform: "uppercase",
                   }}
                 >
-                  GAME OVER
+                  Game Over
+                </h1>
+                
+                <div style={{ marginBottom: "30px" }}>
+                  <p style={{ fontSize: "1.5rem", color: "#ccc", margin: "0 0 10px 0" }}>
+                    Tu aventura terminó.
+                  </p>
+                  <p style={{ fontSize: "2rem", color: "#4affff", margin: "0", fontWeight: "bold", textShadow: "2px 2px 0px #005555" }}>
+                    PUNTUACIÓN FINAL: {score}
+                  </p>
                 </div>
-                <div
-                  style={{
-                    fontSize: "1.2rem",
-                    color: "#ccc",
-                    marginBottom: "30px",
-                    borderTop: "1px solid rgba(255,51,102,0.5)",
-                    paddingTop: "20px",
-                  }}
-                >
-                  Perdiste todas tus vidas
-                </div>
+
                 <button
                   onClick={resetGame}
                   style={{
                     background: "#ff3366",
-                    border: "none",
-                    borderRadius: "40px",
-                    padding: "12px 32px",
-                    fontSize: "1.1rem",
-                    fontWeight: "bold",
+                    border: "4px solid #fff",
+                    padding: "16px 40px",
+                    fontSize: "1.5rem",
+                    fontWeight: "900",
                     color: "#fff",
+                    textTransform: "uppercase",
                     cursor: "pointer",
-                    transition: "transform 0.2s, box-shadow 0.2s",
-                    boxShadow: "0 0 15px rgba(255,51,102,0.5)",
+                    transition: "transform 0.1s",
+                    boxShadow: "6px 6px 0px #881133",
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "scale(1.05)";
-                    e.currentTarget.style.boxShadow = "0 0 25px rgba(255,51,102,0.8)";
+                  onMouseDown={(e) => {
+                    e.currentTarget.style.transform = "translate(4px, 4px)";
+                    e.currentTarget.style.boxShadow = "2px 2px 0px #881133";
+                  }}
+                  onMouseUp={(e) => {
+                    e.currentTarget.style.transform = "translate(0, 0)";
+                    e.currentTarget.style.boxShadow = "6px 6px 0px #881133";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "scale(1)";
-                    e.currentTarget.style.boxShadow = "0 0 15px rgba(255,51,102,0.5)";
+                    e.currentTarget.style.transform = "translate(0, 0)";
+                    e.currentTarget.style.boxShadow = "6px 6px 0px #881133";
                   }}
                 >
-                  REINICIAR
+                  Intentar de nuevo
                 </button>
               </div>
               <style jsx>{`
                 @keyframes fadeIn {
-                  from {
-                    opacity: 0;
-                    backdrop-filter: blur(0);
-                  }
-                  to {
-                    opacity: 1;
-                    backdrop-filter: blur(8px);
-                  }
+                  from { opacity: 0; }
+                  to { opacity: 1; }
                 }
               `}</style>
             </div>
