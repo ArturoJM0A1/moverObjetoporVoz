@@ -54,7 +54,7 @@ const LANES = [-2.4, 0, 2.4] as const;
 
 const PLAYER_Y_BASE = 1.0;
 const PLAYER_Z = -6.0;
-const PLAYER_RADIUS = 0.65; // diámetro 1.3
+const PLAYER_RADIUS = 0.65;
 const PLAYER_SMOOTHING = 14;
 
 const OBSTACLE_Y = 1.0;
@@ -108,8 +108,8 @@ export default function VRScene() {
 
   const [aframeLoaded, setAframeLoaded] = useState(false);
   const [micEnabled, setMicEnabled] = useState(false);
-  const [micStatus, setMicStatus] = useState("Microfono apagado.");
-  const [gameStatus, setGameStatus] = useState<"Jugando" | "Game Over">("Jugando");
+  const [micStatus, setMicStatus] = useState("Micrófono desactivado. Actívalo para jugar.");
+  const [gameStatus, setGameStatus] = useState<"Esperando" | "Jugando" | "Game Over">("Esperando");
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(MAX_LIVES);
   const [lastCommand, setLastCommand] = useState("-");
@@ -136,7 +136,6 @@ export default function VRScene() {
 
   // Estado del salto
   const jumpTimeRemainingRef = useRef(0);
-  const jumpPeakTimeRef = useRef(0); // tiempo en segundos hasta el pico (mitad del salto)
 
   const supportsSpeech =
     typeof window !== "undefined" &&
@@ -148,7 +147,7 @@ export default function VRScene() {
     return { minX, maxX };
   }, []);
 
-  // VIBRACIÓN (funciona para la esfera)
+  // VIBRACIÓN
   const triggerPlayerVibration = () => {
     const player = playerElRef.current;
     if (!player) return;
@@ -180,76 +179,10 @@ export default function VRScene() {
   // Función que activa el salto
   const performJump = () => {
     if (gameStatus !== "Jugando") return;
-    // Evita saltar si ya está saltando
     if (jumpTimeRemainingRef.current > 0) return;
     jumpTimeRemainingRef.current = JUMP_DURATION;
-    jumpPeakTimeRef.current = JUMP_DURATION / 2;
     setLastCommand("saltar");
     setMicStatus("Saltaste!");
-  };
-
-  const resetGame = () => {
-    setGameStatus("Jugando");
-    setScore(0);
-    setLives(MAX_LIVES);
-    setLastCommand("-");
-
-    aliveSecondsRef.current = 0;
-    spawnTimerMsRef.current = 0;
-    starSpawnTimerMsRef.current = 0;
-    lastFrameMsRef.current = null;
-    hitCooldownRef.current = 0;
-    jumpTimeRemainingRef.current = 0;
-
-    setObstacles([]);
-    setStars([]);
-    obstacleElsRef.current.clear();
-    starElsRef.current.clear();
-
-    playerTargetXRef.current = 0;
-    playerXRef.current = 0;
-    const playerEl = playerElRef.current;
-    if (playerEl?.object3D) {
-      playerEl.object3D.position.x = 0;
-      playerEl.object3D.position.y = PLAYER_Y_BASE;
-      playerEl.object3D.position.z = PLAYER_Z;
-      playerEl.object3D.scale.set(1, 1, 1);
-    }
-    setMicStatus(micEnabled ? "Escuchando comandos de voz..." : "Microfono apagado.");
-  };
-
-  useEffect(() => {
-    resetGame();
-    return () => {
-      micActiveRef.current = false;
-      if (micRetryTimeoutRef.current) {
-        window.clearTimeout(micRetryTimeoutRef.current);
-        micRetryTimeoutRef.current = null;
-      }
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      if (vibrationTimeoutRef.current) {
-        window.clearTimeout(vibrationTimeoutRef.current);
-        vibrationTimeoutRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const stopMicrophone = () => {
-    micActiveRef.current = false;
-    setMicEnabled(false);
-    setMicStatus("Microfono apagado.");
-    micRetryAttemptRef.current = 0;
-    if (micRetryTimeoutRef.current) {
-      window.clearTimeout(micRetryTimeoutRef.current);
-      micRetryTimeoutRef.current = null;
-    }
-    recognitionRef.current?.stop();
   };
 
   const applyVoiceCommand = (transcript: string): string | null => {
@@ -279,6 +212,33 @@ export default function VRScene() {
       return executed.join(", ");
     }
     return null;
+  };
+
+  const resetGameState = () => {
+    setScore(0);
+    setLives(MAX_LIVES);
+    setLastCommand("-");
+    aliveSecondsRef.current = 0;
+    spawnTimerMsRef.current = 0;
+    starSpawnTimerMsRef.current = 0;
+    lastFrameMsRef.current = null;
+    hitCooldownRef.current = 0;
+    jumpTimeRemainingRef.current = 0;
+
+    setObstacles([]);
+    setStars([]);
+    obstacleElsRef.current.clear();
+    starElsRef.current.clear();
+
+    playerTargetXRef.current = 0;
+    playerXRef.current = 0;
+    const playerEl = playerElRef.current;
+    if (playerEl?.object3D) {
+      playerEl.object3D.position.x = 0;
+      playerEl.object3D.position.y = PLAYER_Y_BASE;
+      playerEl.object3D.position.z = PLAYER_Z;
+      playerEl.object3D.scale.set(1, 1, 1);
+    }
   };
 
   const startMicrophone = () => {
@@ -313,19 +273,20 @@ export default function VRScene() {
         const errorCode = event.error ?? "desconocido";
 
         if (errorCode === "not-allowed") {
-          setMicStatus("Permiso denegado. Habilita el microfono en el navegador.");
+          setMicStatus("Permiso denegado. Habilita el micrófono en el navegador.");
           micActiveRef.current = false;
           setMicEnabled(false);
+          setGameStatus("Esperando");
           return;
         }
 
         if (errorCode === "audio-capture") {
-          setMicStatus("No se encontro un microfono disponible.");
+          setMicStatus("No se encontró un micrófono disponible.");
           return;
         }
 
         if (errorCode === "no-speech") {
-          setMicStatus("No detecte voz. Intenta hablar mas cerca del microfono.");
+          setMicStatus("No detecté voz. Intenta hablar más cerca del micrófono.");
           return;
         }
 
@@ -338,7 +299,7 @@ export default function VRScene() {
           micRetryAttemptRef.current += 1;
           const delayMs = Math.min(12000, 700 * 2 ** (micRetryAttemptRef.current - 1));
           setMicStatus(
-            `Conexion inestable con reconocimiento de voz (network). Reintentando en ${(delayMs / 1000).toFixed(1)}s...`,
+            `Conexión inestable con reconocimiento de voz (network). Reintentando en ${(delayMs / 1000).toFixed(1)}s...`,
           );
 
           if (micRetryTimeoutRef.current) window.clearTimeout(micRetryTimeoutRef.current);
@@ -348,7 +309,7 @@ export default function VRScene() {
               recognitionRef.current.start();
               setMicStatus("Escuchando comandos de voz...");
             } catch {
-              // onend/onerror volvera a disparar
+              // onend/onerror volverá a disparar
             }
           }, delayMs);
           return;
@@ -363,9 +324,10 @@ export default function VRScene() {
           recognition.start();
           micRetryAttemptRef.current = 0;
         } catch {
-          setMicStatus("No pude reiniciar el microfono. Presiona activar nuevamente.");
+          setMicStatus("No pude reiniciar el micrófono. Presiona activar nuevamente.");
           micActiveRef.current = false;
           setMicEnabled(false);
+          setGameStatus("Esperando");
         }
       };
 
@@ -376,21 +338,50 @@ export default function VRScene() {
       recognitionRef.current.start();
       micActiveRef.current = true;
       setMicEnabled(true);
+      setGameStatus("Jugando");
       setMicStatus("Escuchando comandos de voz...");
+      resetGameState(); // Reiniciar el juego al activar el micrófono
     } catch {
-      setMicStatus("No pude iniciar el microfono. Intenta de nuevo.");
+      setMicStatus("No pude iniciar el micrófono. Intenta de nuevo.");
       micActiveRef.current = false;
       setMicEnabled(false);
+      setGameStatus("Esperando");
     }
   };
 
+  const stopMicrophone = () => {
+    micActiveRef.current = false;
+    setMicEnabled(false);
+    setGameStatus("Esperando");
+    setMicStatus("Micrófono desactivado. Actívalo para jugar.");
+    micRetryAttemptRef.current = 0;
+    if (micRetryTimeoutRef.current) {
+      window.clearTimeout(micRetryTimeoutRef.current);
+      micRetryTimeoutRef.current = null;
+    }
+    recognitionRef.current?.stop();
+  };
+
+  const resetGame = () => {
+    resetGameState();
+    if (micEnabled) {
+      setGameStatus("Jugando");
+      setMicStatus("Juego reiniciado. ¡Sigue jugando!");
+    } else {
+      setGameStatus("Esperando");
+      setMicStatus("Micrófono desactivado. Actívalo para jugar.");
+    }
+  };
+
+  // Bucle principal del juego
   useEffect(() => {
     if (!aframeLoaded) return;
 
     const step = (nowMs: number) => {
       animationFrameRef.current = requestAnimationFrame(step);
 
-      if (gameStatus !== "Jugando") {
+      // Solo actualizar el juego si el micrófono está activado y el estado es "Jugando"
+      if (!micEnabled || gameStatus !== "Jugando") {
         lastFrameMsRef.current = nowMs;
         return;
       }
@@ -400,7 +391,6 @@ export default function VRScene() {
       lastFrameMsRef.current = nowMs;
 
       hitCooldownRef.current = Math.max(0, hitCooldownRef.current - dt);
-
       aliveSecondsRef.current += dt;
       setScore(Math.floor(aliveSecondsRef.current * 10));
 
@@ -409,16 +399,13 @@ export default function VRScene() {
       // Actualizar el salto
       let jumpOffsetY = 0;
       if (jumpTimeRemainingRef.current > 0) {
-        const t = (JUMP_DURATION - jumpTimeRemainingRef.current) / JUMP_DURATION; // 0 al inicio, 1 al final
-        // Parábola: sube hasta t=0.5, luego baja
+        const t = (JUMP_DURATION - jumpTimeRemainingRef.current) / JUMP_DURATION;
         const peak = JUMP_HEIGHT;
         if (t <= 0.5) {
-          // subiendo
-          const p = t / 0.5; // 0->1
-          jumpOffsetY = peak * (2 * p - p * p); // curva suave
+          const p = t / 0.5;
+          jumpOffsetY = peak * (2 * p - p * p);
         } else {
-          // bajando
-          const p = (t - 0.5) / 0.5; // 0->1
+          const p = (t - 0.5) / 0.5;
           jumpOffsetY = peak * (1 - (2 * p - p * p));
         }
         jumpTimeRemainingRef.current -= dt;
@@ -466,7 +453,7 @@ export default function VRScene() {
       }
 
       const playerX = playerXRef.current;
-      const playerHalf = PLAYER_RADIUS; // radio de la esfera
+      const playerHalf = PLAYER_RADIUS;
 
       let hitObstacleId: string | null = null;
       let pickedStarId: string | null = null;
@@ -480,8 +467,7 @@ export default function VRScene() {
           if (el?.object3D) el.object3D.position.z = newZ;
 
           if (newZ <= OBSTACLE_DESPAWN_Z) {
-            // Colisión: bounding sphere aproximada
-            const half = o.size / 2; // tamaño como caja, pero para esfera usamos radio = half
+            const half = o.size / 2;
             const dz = Math.abs(newZ - PLAYER_Z);
             const dx = Math.abs(o.laneX - playerX);
             const dy = Math.abs(OBSTACLE_Y - (PLAYER_Y_BASE + jumpOffsetY));
@@ -524,7 +510,7 @@ export default function VRScene() {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
           starElsRef.current.delete(pickedStarId);
           setLives((l) => Math.min(MAX_LIVES, l + 1));
-          setMicStatus("Recogiste una estrella: +1 vida.");
+          setMicStatus("¡Recogiste una estrella! +1 vida.");
         } else if (hitObstacleId) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
           setObstacles((prev) => prev.filter((o) => o.id !== hitObstacleId));
@@ -535,9 +521,9 @@ export default function VRScene() {
             const next = Math.max(0, l - 1);
             if (next <= 0) {
               setGameStatus("Game Over");
-              setMicStatus("Game Over: perdiste tus 5 vidas.");
+              setMicStatus("¡Game Over! Perdiste todas tus vidas.");
             } else {
-              setMicStatus(`Choque: -1 vida. Te quedan ${next}.`);
+              setMicStatus(`¡Choque! Te quedan ${next} vidas.`);
             }
             return next;
           });
@@ -552,11 +538,27 @@ export default function VRScene() {
         animationFrameRef.current = null;
       }
     };
-  }, [aframeLoaded, gameStatus, laneBounds.maxX, laneBounds.minX]);
+  }, [aframeLoaded, gameStatus, laneBounds.maxX, laneBounds.minX, micEnabled]);
 
-  // Función para renderizar obstáculo usando a-entity con geometry
+  // Liberar recursos del micrófono al desmontar
+  useEffect(() => {
+    return () => {
+      micActiveRef.current = false;
+      if (micRetryTimeoutRef.current) {
+        window.clearTimeout(micRetryTimeoutRef.current);
+        micRetryTimeoutRef.current = null;
+      }
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      if (vibrationTimeoutRef.current) {
+        window.clearTimeout(vibrationTimeoutRef.current);
+        vibrationTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  // Renderizado de obstáculos
   const renderObstacle = (o: Obstacle) => {
-    // Separamos la key del resto de props para evitar el warning de React
     const { key, ...propsWithoutKey } = {
       key: o.id,
       ref: (el: HTMLElement | null) => {
@@ -567,7 +569,6 @@ export default function VRScene() {
       material: "color: #ef4444; emissive: #3b0606; metalness: 0.05; roughness: 0.55",
     };
 
-    // Definir geometry según la forma
     let geometryStr = "";
     switch (o.shape) {
       case "box":
@@ -581,13 +582,7 @@ export default function VRScene() {
         break;
     }
 
-    return (
-      <a-entity
-        key={o.id}
-        {...propsWithoutKey}
-        geometry={geometryStr}
-      />
-    );
+    return <a-entity key={o.id} {...propsWithoutKey} geometry={geometryStr} />;
   };
 
   return (
@@ -621,7 +616,7 @@ export default function VRScene() {
               material="color: #0e1b2e; metalness: 0.05; roughness: 0.95"
             ></a-plane>
 
-            {/* Jugador: esfera azul usando a-entity con geometry */}
+            {/* Jugador: esfera azul */}
             <a-entity
               id="player"
               ref={(el: AFrameEntity | null) => {
@@ -682,7 +677,7 @@ export default function VRScene() {
                   opacity: supportsSpeech ? 1 : 0.6,
                 }}
               >
-                {micEnabled ? "Apagar microfono" : "Activar microfono"}
+                {micEnabled ? "Apagar micrófono" : "Activar micrófono"}
               </button>
 
               <button
@@ -706,33 +701,34 @@ export default function VRScene() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ opacity: 0.85 }}>Estado</span>
                 <strong style={{ color: gameStatus === "Jugando" ? "#86efac" : "#fecaca" }}>
-                  {gameStatus}
+                  {gameStatus === "Esperando" ? "Esperando micrófono" : gameStatus}
                 </strong>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ opacity: 0.85 }}>Vidas</span>
-                <strong>
+                <strong style={{ color: "#ff4d4d" }}>
                   {Array.from({ length: MAX_LIVES }, (_, i) => (i < lives ? "❤" : "♡")).join(" ")}
                 </strong>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ opacity: 0.85 }}>Puntuacion</span>
+                <span style={{ opacity: 0.85 }}>Puntuación</span>
                 <strong>{score}</strong>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ opacity: 0.85 }}>Ultimo comando</span>
+                <span style={{ opacity: 0.85 }}>Último comando</span>
                 <strong>{lastCommand}</strong>
               </div>
             </div>
 
             <p style={{ margin: "10px 0 6px" }}>{micStatus}</p>
-            <p style={{ margin: "6px 0", fontSize: 13 }}>Ultimo texto: {lastTranscript}</p>
+            <p style={{ margin: "6px 0", fontSize: 13 }}>Último texto: {lastTranscript}</p>
             <p style={{ margin: "6px 0", fontSize: 12, opacity: 0.9 }}>
               Di: <strong>izquierda</strong>, <strong>derecha</strong> o <strong>saltar</strong>{" "}
               (puede estar dentro de una frase).
+              {!micEnabled && " Activa el micrófono para comenzar."}
             </p>
           </div>
         </div>
