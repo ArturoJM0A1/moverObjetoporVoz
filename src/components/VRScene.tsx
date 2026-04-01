@@ -103,8 +103,9 @@ const SPEED_RAMP_PER_SEC = 0.12;
 const MAX_LIVES = 5;
 const HIT_COOLDOWN_SEC = 0.3;
 
-const JUMP_DURATION = 0.4;
-const JUMP_HEIGHT = 2.5;
+// Ajustamos el salto para que sea más alto y dure más tiempo en el aire
+const JUMP_DURATION = 0.95; 
+const JUMP_HEIGHT = 3.2;
 
 const PLAYER_COLOR_NORMAL = "#4affff";
 const PLAYER_COLOR_HIT = "#ffffff";
@@ -141,8 +142,8 @@ export default function VRScene() {
   const micRetryTimeoutRef = useRef<number | null>(null);
   const micRetryAttemptRef = useRef(0);
 
-  // NUEVO: Rastreador de la última palabra procesada para evitar duplicados
-  const lastProcessedWordIndexRef = useRef(0);
+  // NUEVO: Rastreador por CARACTERES en lugar de palabras enteras
+  const lastProcessedCharIndexRef = useRef(0);
 
   const [aframeLoaded, setAframeLoaded] = useState(false);
   const [micEnabled, setMicEnabled] = useState(false);
@@ -289,8 +290,6 @@ export default function VRScene() {
 
   const executeCommand = (command: string) => {
     const now = Date.now();
-    // Reducimos el debounce porque ahora controlamos por índices de palabras.
-    // Esto es solo para evitar que digan 2 comandos legítimos ridículamente rápido.
     if (now - lastVoiceCommandTimeRef.current < 200) return; 
     lastVoiceCommandTimeRef.current = now;
 
@@ -311,7 +310,6 @@ export default function VRScene() {
         performJump();
         break;
       case "disparar":
-      case "fuego":
         shootProjectile();
         break;
     }
@@ -321,19 +319,43 @@ export default function VRScene() {
     if (gameStatusRef.current !== "Jugando") return;
     
     const normalized = normalizeSpeech(fullTranscript);
-    // Dividimos todo el historial en palabras individuales
-    const words = normalized.split(/\s+/).filter(Boolean);
+
+    // Si el motor limpia el historial interno, reiniciamos nuestro cursor
+    if (normalized.length < lastProcessedCharIndexRef.current) {
+        lastProcessedCharIndexRef.current = 0;
+    }
+
+    let searchIndex = lastProcessedCharIndexRef.current;
     const executed: string[] = [];
 
-    // Solo procesamos las palabras que sean NUEVAS (desde nuestro último índice guardado)
-    for (let i = lastProcessedWordIndexRef.current; i < words.length; i++) {
-      const w = words[i];
-      if (["izquierda", "derecha", "saltar", "disparar", "fuego"].includes(w)) {
-        const cmd = w === "fuego" ? "disparar" : w;
-        executeCommand(cmd);
-        executed.push(cmd);
-        // Avanzamos el índice para NUNCA volver a leer esta misma palabra
-        lastProcessedWordIndexRef.current = i + 1; 
+    while (true) {
+      let earliestCmd = null;
+      let earliestIdx = Infinity;
+
+      // Buscamos prefijos para reaccionar antes de que termines la palabra
+      const targets = [
+        { key: "izquierd", val: "izquierda" },
+        { key: "derech", val: "derecha" },
+        { key: "salta", val: "saltar" },
+        { key: "dispara", val: "disparar" },
+        { key: "fuego", val: "disparar" }
+      ];
+
+      for (const t of targets) {
+        const idx = normalized.indexOf(t.key, searchIndex);
+        if (idx !== -1 && idx < earliestIdx) {
+          earliestIdx = idx;
+          earliestCmd = t;
+        }
+      }
+
+      if (earliestCmd) {
+        executeCommand(earliestCmd.val);
+        executed.push(earliestCmd.val);
+        searchIndex = earliestIdx + earliestCmd.key.length;
+        lastProcessedCharIndexRef.current = searchIndex;
+      } else {
+        break;
       }
     }
 
@@ -368,8 +390,7 @@ export default function VRScene() {
     shootCooldownRef.current = 0;
     lastVoiceCommandTimeRef.current = 0;
     
-    // Reiniciamos el rastreador de palabras
-    lastProcessedWordIndexRef.current = 0;
+    lastProcessedCharIndexRef.current = 0;
 
     obstaclesRef.current = [];
     starsRef.current = [];
@@ -416,8 +437,6 @@ export default function VRScene() {
 
       recognition.onresult = (event: RecognitionResultEvent) => {
         let transcript = "";
-        // Reconstruimos la frase completa desde el índice 0 para asegurarnos 
-        // de que nuestra separación de palabras siempre sea consistente
         for (let i = 0; i < event.results.length; i += 1) {
           transcript += event.results[i][0]?.transcript ?? "";
         }
@@ -478,9 +497,7 @@ export default function VRScene() {
       recognition.onend = () => {
         if (!micActiveRef.current) return;
         try {
-          // Cada vez que el motor de voz se detiene y reinicia internamente,
-          // la frase se borra, por lo que también reiniciamos nuestro índice de palabras
-          lastProcessedWordIndexRef.current = 0; 
+          lastProcessedCharIndexRef.current = 0; 
           recognition.start();
           micRetryAttemptRef.current = 0;
         } catch {
@@ -495,7 +512,7 @@ export default function VRScene() {
     }
 
     try {
-      lastProcessedWordIndexRef.current = 0;
+      lastProcessedCharIndexRef.current = 0;
       recognitionRef.current.start();
       micActiveRef.current = true;
       setMicEnabled(true);
@@ -516,7 +533,7 @@ export default function VRScene() {
     setGameStatus("Esperando");
     setMicStatus("Micrófono desactivado. Actívalo para jugar.");
     micRetryAttemptRef.current = 0;
-    lastProcessedWordIndexRef.current = 0;
+    lastProcessedCharIndexRef.current = 0;
     if (micRetryTimeoutRef.current) {
       window.clearTimeout(micRetryTimeoutRef.current);
       micRetryTimeoutRef.current = null;
@@ -575,7 +592,6 @@ export default function VRScene() {
         }
       }
 
-      // Spawn obstáculos
       spawnTimerMsRef.current += dt * 1000;
       if (spawnTimerMsRef.current >= SPAWN_EVERY_MS) {
         spawnTimerMsRef.current = 0;
@@ -588,7 +604,6 @@ export default function VRScene() {
         setObstaclesVersion(v => v + 1);
       }
 
-      // Spawn estrellas (Vidas)
       starSpawnTimerMsRef.current += dt * 1000;
       if (starSpawnTimerMsRef.current >= 2600) {
         starSpawnTimerMsRef.current = 0;
@@ -600,7 +615,6 @@ export default function VRScene() {
         }
       }
 
-      // Spawn pirámides (Munición)
       pyramidSpawnTimerMsRef.current += dt * 1000;
       if (pyramidSpawnTimerMsRef.current >= 4500) {
         pyramidSpawnTimerMsRef.current = 0;
@@ -612,7 +626,6 @@ export default function VRScene() {
         }
       }
 
-      // Movimiento jugador
       const playerEl = playerElRef.current;
       if (playerEl?.object3D) {
         const target = Math.min(laneBounds.maxX, Math.max(laneBounds.minX, playerTargetXRef.current));
@@ -632,7 +645,6 @@ export default function VRScene() {
       let starCollected = false;
       let pyramidCollected = false;
 
-      // Proyectiles y colisión con obstáculos
       const newProjectiles: Projectile[] = [];
       const destroyedObstacleIds = new Set<string>();
 
@@ -668,7 +680,6 @@ export default function VRScene() {
         setProjectilesVersion(v => v + 1);
       }
 
-      // Colisiones - Obstáculos
       const newObstacles: Obstacle[] = [];
       for (const o of obstaclesRef.current) {
         const newZ = o.z + speed * dt;
@@ -692,7 +703,6 @@ export default function VRScene() {
       }
       obstaclesRef.current = newObstacles;
 
-      // Colisiones - Estrellas
       const newStars: Star[] = [];
       for (const s of starsRef.current) {
         const newZ = s.z + speed * dt;
@@ -716,7 +726,6 @@ export default function VRScene() {
       }
       starsRef.current = newStars;
 
-      // Colisiones - Pirámides
       const newPyramids: Pyramid[] = [];
       for (const p of pyramidsRef.current) {
         const newZ = p.z + speed * dt;
@@ -740,7 +749,6 @@ export default function VRScene() {
       }
       pyramidsRef.current = newPyramids;
 
-      // Efectos según colisión
       if (hitCooldownRef.current <= 0) {
         if (hitOccurred) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
