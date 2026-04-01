@@ -24,6 +24,7 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type AFrameEntity = HTMLElement & {
   object3D?: {
     position: { x: number; y: number; z: number };
+    scale: { x: number; y: number; z: number; set: (x: number, y: number, z: number) => void };
   };
 };
 
@@ -39,6 +40,7 @@ type Obstacle = {
   laneX: number;
   size: number;
   z: number;
+  shape: "box" | "sphere" | "cylinder";
 };
 
 type Star = {
@@ -50,9 +52,9 @@ type Star = {
 
 const LANES = [-2.4, 0, 2.4] as const;
 
-const PLAYER_Y = 1.0;
+const PLAYER_Y_BASE = 1.0;
 const PLAYER_Z = -6.0;
-const PLAYER_SIZE = 1.3;
+const PLAYER_RADIUS = 0.65; // diámetro 1.3
 const PLAYER_SMOOTHING = 14;
 
 const OBSTACLE_Y = 1.0;
@@ -67,11 +69,15 @@ const STAR_DESPAWN_Z = 6;
 const STAR_SIZE = 0.85;
 
 const SPAWN_EVERY_MS = 900;
-const BASE_SPEED = 6.5; // unidades/segundo
+const BASE_SPEED = 6.5;
 const SPEED_RAMP_PER_SEC = 0.22;
 
 const MAX_LIVES = 5;
 const HIT_COOLDOWN_SEC = 0.55;
+
+// Parámetros del salto
+const JUMP_DURATION = 0.4; // segundos
+const JUMP_HEIGHT = 1.2;   // altura adicional (Y)
 
 function normalizeSpeech(text: string): string {
   return text
@@ -126,6 +132,12 @@ export default function VRScene() {
   const playerTargetXRef = useRef(0);
   const playerXRef = useRef(0);
 
+  const vibrationTimeoutRef = useRef<number | null>(null);
+
+  // Estado del salto
+  const jumpTimeRemainingRef = useRef(0);
+  const jumpPeakTimeRef = useRef(0); // tiempo en segundos hasta el pico (mitad del salto)
+
   const supportsSpeech =
     typeof window !== "undefined" &&
     Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -135,6 +147,46 @@ export default function VRScene() {
     const maxX = Math.max(...LANES);
     return { minX, maxX };
   }, []);
+
+  // VIBRACIÓN (funciona para la esfera)
+  const triggerPlayerVibration = () => {
+    const player = playerElRef.current;
+    if (!player) return;
+
+    if (vibrationTimeoutRef.current) {
+      window.clearTimeout(vibrationTimeoutRef.current);
+      vibrationTimeoutRef.current = null;
+    }
+
+    if (player.object3D) {
+      player.object3D.scale.set(1.35, 1.35, 1.35);
+      vibrationTimeoutRef.current = window.setTimeout(() => {
+        if (player.object3D) {
+          player.object3D.scale.set(1, 1, 1);
+        }
+        vibrationTimeoutRef.current = null;
+      }, 120);
+    } else {
+      player.setAttribute("scale", "1.35 1.35 1.35");
+      vibrationTimeoutRef.current = window.setTimeout(() => {
+        if (player && player.isConnected) {
+          player.setAttribute("scale", "1 1 1");
+        }
+        vibrationTimeoutRef.current = null;
+      }, 120);
+    }
+  };
+
+  // Función que activa el salto
+  const performJump = () => {
+    if (gameStatus !== "Jugando") return;
+    // Evita saltar si ya está saltando
+    if (jumpTimeRemainingRef.current > 0) return;
+    jumpTimeRemainingRef.current = JUMP_DURATION;
+    jumpPeakTimeRef.current = JUMP_DURATION / 2;
+    setLastCommand("saltar");
+    setMicStatus("Saltaste!");
+  };
 
   const resetGame = () => {
     setGameStatus("Jugando");
@@ -147,6 +199,7 @@ export default function VRScene() {
     starSpawnTimerMsRef.current = 0;
     lastFrameMsRef.current = null;
     hitCooldownRef.current = 0;
+    jumpTimeRemainingRef.current = 0;
 
     setObstacles([]);
     setStars([]);
@@ -158,8 +211,9 @@ export default function VRScene() {
     const playerEl = playerElRef.current;
     if (playerEl?.object3D) {
       playerEl.object3D.position.x = 0;
-      playerEl.object3D.position.y = PLAYER_Y;
+      playerEl.object3D.position.y = PLAYER_Y_BASE;
       playerEl.object3D.position.z = PLAYER_Z;
+      playerEl.object3D.scale.set(1, 1, 1);
     }
     setMicStatus(micEnabled ? "Escuchando comandos de voz..." : "Microfono apagado.");
   };
@@ -178,6 +232,10 @@ export default function VRScene() {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
+      if (vibrationTimeoutRef.current) {
+        window.clearTimeout(vibrationTimeoutRef.current);
+        vibrationTimeoutRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -194,22 +252,13 @@ export default function VRScene() {
     recognitionRef.current?.stop();
   };
 
-  const jumpClearObstacles = () => {
-    if (gameStatus !== "Jugando") return;
-    setObstacles([]);
-    obstacleElsRef.current.clear();
-    setLastCommand("saltar");
-    setMicStatus("Salto: obstaculos limpiados.");
-  };
-
   const applyVoiceCommand = (transcript: string): string | null => {
     if (gameStatus !== "Jugando") return null;
     const normalized = normalizeSpeech(transcript);
     const executed: string[] = [];
 
     if (normalized.includes("saltar")) {
-      setObstacles([]);
-      obstacleElsRef.current.clear();
+      performJump();
       executed.push("saltar");
     }
 
@@ -357,14 +406,38 @@ export default function VRScene() {
 
       const speed = BASE_SPEED + aliveSecondsRef.current * SPEED_RAMP_PER_SEC;
 
+      // Actualizar el salto
+      let jumpOffsetY = 0;
+      if (jumpTimeRemainingRef.current > 0) {
+        const t = (JUMP_DURATION - jumpTimeRemainingRef.current) / JUMP_DURATION; // 0 al inicio, 1 al final
+        // Parábola: sube hasta t=0.5, luego baja
+        const peak = JUMP_HEIGHT;
+        if (t <= 0.5) {
+          // subiendo
+          const p = t / 0.5; // 0->1
+          jumpOffsetY = peak * (2 * p - p * p); // curva suave
+        } else {
+          // bajando
+          const p = (t - 0.5) / 0.5; // 0->1
+          jumpOffsetY = peak * (1 - (2 * p - p * p));
+        }
+        jumpTimeRemainingRef.current -= dt;
+        if (jumpTimeRemainingRef.current <= 0) {
+          jumpTimeRemainingRef.current = 0;
+          jumpOffsetY = 0;
+        }
+      }
+
       // spawn obstacles
       spawnTimerMsRef.current += dt * 1000;
       if (spawnTimerMsRef.current >= SPAWN_EVERY_MS) {
         spawnTimerMsRef.current = 0;
         const laneX = LANES[Math.floor(Math.random() * LANES.length)];
         const size = OBSTACLE_MIN_SIZE + Math.random() * (OBSTACLE_MAX_SIZE - OBSTACLE_MIN_SIZE);
+        const shapes: ("box" | "sphere" | "cylinder")[] = ["box", "sphere", "cylinder"];
+        const shape = shapes[Math.floor(Math.random() * shapes.length)];
         const id = `${nowMs.toFixed(0)}-${Math.random().toString(16).slice(2)}`;
-        setObstacles((prev) => [...prev, { id, laneX, size, z: OBSTACLE_SPAWN_Z }]);
+        setObstacles((prev) => [...prev, { id, laneX, size, z: OBSTACLE_SPAWN_Z, shape }]);
       }
 
       // spawn stars
@@ -378,7 +451,7 @@ export default function VRScene() {
         }
       }
 
-      // smooth player
+      // smooth player horizontal movement
       const playerEl = playerElRef.current;
       if (playerEl?.object3D) {
         const target = Math.min(laneBounds.maxX, Math.max(laneBounds.minX, playerTargetXRef.current));
@@ -387,16 +460,18 @@ export default function VRScene() {
         const next = curr + (target - curr) * t;
         playerXRef.current = next;
         playerEl.object3D.position.x = next;
-        playerEl.object3D.position.y = PLAYER_Y;
+        // Aplicar salto
+        playerEl.object3D.position.y = PLAYER_Y_BASE + jumpOffsetY;
         playerEl.object3D.position.z = PLAYER_Z;
       }
 
       const playerX = playerXRef.current;
-      const playerHalf = PLAYER_SIZE / 2;
+      const playerHalf = PLAYER_RADIUS; // radio de la esfera
 
       let hitObstacleId: string | null = null;
       let pickedStarId: string | null = null;
 
+      // Actualizar obstáculos y detectar colisiones
       setObstacles((prev) => {
         const next: Obstacle[] = [];
         for (const o of prev) {
@@ -405,11 +480,13 @@ export default function VRScene() {
           if (el?.object3D) el.object3D.position.z = newZ;
 
           if (newZ <= OBSTACLE_DESPAWN_Z) {
-            const half = o.size / 2;
+            // Colisión: bounding sphere aproximada
+            const half = o.size / 2; // tamaño como caja, pero para esfera usamos radio = half
             const dz = Math.abs(newZ - PLAYER_Z);
             const dx = Math.abs(o.laneX - playerX);
-            const dy = Math.abs(OBSTACLE_Y - PLAYER_Y);
-            if (dx <= playerHalf + half && dz <= playerHalf + half && dy <= playerHalf + half) {
+            const dy = Math.abs(OBSTACLE_Y - (PLAYER_Y_BASE + jumpOffsetY));
+            const radiusSum = playerHalf + half;
+            if (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum) {
               hitObstacleId = o.id;
             }
             next.push({ ...o, z: newZ });
@@ -418,6 +495,7 @@ export default function VRScene() {
         return next;
       });
 
+      // Actualizar estrellas y detectar recolección
       setStars((prev) => {
         const next: Star[] = [];
         for (const s of prev) {
@@ -429,8 +507,9 @@ export default function VRScene() {
             const half = s.size / 2;
             const dz = Math.abs(newZ - PLAYER_Z);
             const dx = Math.abs(s.laneX - playerX);
-            const dy = Math.abs(STAR_Y - PLAYER_Y);
-            if (dx <= playerHalf + half && dz <= playerHalf + half && dy <= playerHalf + half) {
+            const dy = Math.abs(STAR_Y - (PLAYER_Y_BASE + jumpOffsetY));
+            const radiusSum = playerHalf + half;
+            if (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum) {
               pickedStarId = s.id;
             } else {
               next.push({ ...s, z: newZ });
@@ -448,8 +527,10 @@ export default function VRScene() {
           setMicStatus("Recogiste una estrella: +1 vida.");
         } else if (hitObstacleId) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
-          obstacleElsRef.current.delete(hitObstacleId);
           setObstacles((prev) => prev.filter((o) => o.id !== hitObstacleId));
+          obstacleElsRef.current.delete(hitObstacleId);
+          triggerPlayerVibration();
+
           setLives((l) => {
             const next = Math.max(0, l - 1);
             if (next <= 0) {
@@ -472,6 +553,42 @@ export default function VRScene() {
       }
     };
   }, [aframeLoaded, gameStatus, laneBounds.maxX, laneBounds.minX]);
+
+  // Función para renderizar obstáculo usando a-entity con geometry
+  const renderObstacle = (o: Obstacle) => {
+    // Separamos la key del resto de props para evitar el warning de React
+    const { key, ...propsWithoutKey } = {
+      key: o.id,
+      ref: (el: HTMLElement | null) => {
+        if (el) obstacleElsRef.current.set(o.id, el);
+        else obstacleElsRef.current.delete(o.id);
+      },
+      position: `${o.laneX} ${OBSTACLE_Y} ${o.z}`,
+      material: "color: #ef4444; emissive: #3b0606; metalness: 0.05; roughness: 0.55",
+    };
+
+    // Definir geometry según la forma
+    let geometryStr = "";
+    switch (o.shape) {
+      case "box":
+        geometryStr = `primitive: box; width: ${o.size}; height: ${o.size}; depth: ${o.size}`;
+        break;
+      case "sphere":
+        geometryStr = `primitive: sphere; radius: ${o.size / 2}`;
+        break;
+      case "cylinder":
+        geometryStr = `primitive: cylinder; radius: ${o.size / 2}; height: ${o.size}`;
+        break;
+    }
+
+    return (
+      <a-entity
+        key={o.id}
+        {...propsWithoutKey}
+        geometry={geometryStr}
+      />
+    );
+  };
 
   return (
     <>
@@ -504,32 +621,18 @@ export default function VRScene() {
               material="color: #0e1b2e; metalness: 0.05; roughness: 0.95"
             ></a-plane>
 
-            <a-box
-              id="voz-box"
+            {/* Jugador: esfera azul usando a-entity con geometry */}
+            <a-entity
+              id="player"
               ref={(el: AFrameEntity | null) => {
                 playerElRef.current = el;
               }}
-              position={`0 ${PLAYER_Y} ${PLAYER_Z}`}
-              depth={PLAYER_SIZE}
-              height={PLAYER_SIZE}
-              width={PLAYER_SIZE}
-              material="color: #22c55e; emissive: #0b3d22; metalness: 0.15; roughness: 0.35"
-            ></a-box>
+              position={`0 ${PLAYER_Y_BASE} ${PLAYER_Z}`}
+              geometry={`primitive: sphere; radius: ${PLAYER_RADIUS}`}
+              material="color: #3b82f6; emissive: #1e3a8a; metalness: 0.2; roughness: 0.3"
+            ></a-entity>
 
-            {obstacles.map((o) => (
-              <a-box
-                key={o.id}
-                ref={(el: HTMLElement | null) => {
-                  if (el) obstacleElsRef.current.set(o.id, el);
-                  else obstacleElsRef.current.delete(o.id);
-                }}
-                position={`${o.laneX} ${OBSTACLE_Y} ${o.z}`}
-                depth={o.size}
-                height={o.size}
-                width={o.size}
-                material="color: #ef4444; emissive: #3b0606; metalness: 0.05; roughness: 0.55"
-              ></a-box>
-            ))}
+            {obstacles.map((o) => renderObstacle(o))}
 
             {stars.map((s) => (
               <a-entity
@@ -580,25 +683,6 @@ export default function VRScene() {
                 }}
               >
                 {micEnabled ? "Apagar microfono" : "Activar microfono"}
-              </button>
-
-              <button
-                type="button"
-                disabled={gameStatus !== "Jugando"}
-                onClick={jumpClearObstacles}
-                style={{
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  borderRadius: 10,
-                  padding: "9px 12px",
-                  background:
-                    gameStatus === "Jugando" ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.06)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  cursor: gameStatus === "Jugando" ? "pointer" : "not-allowed",
-                  opacity: gameStatus === "Jugando" ? 1 : 0.7,
-                }}
-              >
-                Saltar
               </button>
 
               <button
