@@ -42,17 +42,13 @@ declare global {
   }
 }
 
-// ========== TIPO OBSTACLE ACTUALIZADO ==========
 type Obstacle = {
   id: string;
-  laneX: number;          // posición actual en X (interpolada)
-  targetLaneX: number;    // carril objetivo hacia el que se mueve
-  changeCooldown: number; // tiempo restante hasta el próximo cambio de carril
+  laneX: number;
   size: number;
   z: number;
   shape: "box" | "sphere" | "cylinder";
 };
-// =============================================
 
 type Star = {
   id: string;
@@ -107,7 +103,8 @@ const SPEED_RAMP_PER_SEC = 0.12;
 const MAX_LIVES = 5;
 const HIT_COOLDOWN_SEC = 0.3;
 
-const JUMP_DURATION = 0.95;
+// Ajustamos el salto para que sea más alto y dure más tiempo en el aire
+const JUMP_DURATION = 0.95; 
 const JUMP_HEIGHT = 3.2;
 
 const PLAYER_COLOR_NORMAL = "#4affff";
@@ -115,13 +112,7 @@ const PLAYER_COLOR_HIT = "#ffffff";
 const OBSTACLE_COLOR = "#ff44cc";
 const STAR_COLOR = "#ffdd77";
 const PROJECTILE_COLOR = "#ff3333";
-const PYRAMID_COLOR = "#33ff55";
-
-// Parámetros para el cambio de carril de los obstáculos
-const OBSTACLE_LANE_CHANGE_COOLDOWN_MIN = 0.8;  // segundos
-const OBSTACLE_LANE_CHANGE_COOLDOWN_MAX = 2.2;
-const OBSTACLE_LANE_CHANGE_PROB = 0.45;          // probabilidad por tick cuando el cooldown llega a 0
-const OBSTACLE_LANE_LERP_SPEED = 4.5;            // velocidad de interpolación (más alto = más rápido)
+const PYRAMID_COLOR = "#33ff55"; 
 
 function normalizeSpeech(text: string): string {
   return text
@@ -151,6 +142,7 @@ export default function VRScene() {
   const micRetryTimeoutRef = useRef<number | null>(null);
   const micRetryAttemptRef = useRef(0);
 
+  // NUEVO: Rastreador por CARACTERES en lugar de palabras enteras
   const lastProcessedCharIndexRef = useRef(0);
 
   const [aframeLoaded, setAframeLoaded] = useState(false);
@@ -159,8 +151,8 @@ export default function VRScene() {
   const [gameStatus, setGameStatus] = useState<"Esperando" | "Jugando" | "Game Over">("Esperando");
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(MAX_LIVES);
-  const [ammo, setAmmo] = useState(START_AMMO);
-  const ammoRef = useRef(START_AMMO);
+  const [ammo, setAmmo] = useState(START_AMMO); 
+  const ammoRef = useRef(START_AMMO);           
 
   const [lastCommand, setLastCommand] = useState("-");
   const [lastTranscript, setLastTranscript] = useState("-");
@@ -172,19 +164,19 @@ export default function VRScene() {
 
   const obstaclesRef = useRef<Obstacle[]>([]);
   const starsRef = useRef<Star[]>([]);
-  const pyramidsRef = useRef<Pyramid[]>([]);
+  const pyramidsRef = useRef<Pyramid[]>([]); 
   const projectilesRef = useRef<Projectile[]>([]);
-
+  
   const [obstaclesVersion, setObstaclesVersion] = useState(0);
   const [starsVersion, setStarsVersion] = useState(0);
-  const [pyramidsVersion, setPyramidsVersion] = useState(0);
+  const [pyramidsVersion, setPyramidsVersion] = useState(0); 
   const [projectilesVersion, setProjectilesVersion] = useState(0);
-
+  
   const obstaclesVersionRef = useRef(obstaclesVersion);
   const starsVersionRef = useRef(starsVersion);
   const pyramidsVersionRef = useRef(pyramidsVersion);
   const projectilesVersionRef = useRef(projectilesVersion);
-
+  
   useEffect(() => { obstaclesVersionRef.current = obstaclesVersion; }, [obstaclesVersion]);
   useEffect(() => { starsVersionRef.current = starsVersion; }, [starsVersion]);
   useEffect(() => { pyramidsVersionRef.current = pyramidsVersion; }, [pyramidsVersion]);
@@ -192,14 +184,14 @@ export default function VRScene() {
 
   const obstacleElsRef = useRef(new Map<string, HTMLElement>());
   const starElsRef = useRef(new Map<string, HTMLElement>());
-  const pyramidElsRef = useRef(new Map<string, HTMLElement>());
+  const pyramidElsRef = useRef(new Map<string, HTMLElement>()); 
   const playerElRef = useRef<AFrameEntity | null>(null);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameMsRef = useRef<number | null>(null);
   const spawnTimerMsRef = useRef(0);
   const starSpawnTimerMsRef = useRef(0);
-  const pyramidSpawnTimerMsRef = useRef(0);
+  const pyramidSpawnTimerMsRef = useRef(0); 
   const aliveSecondsRef = useRef(0);
   const hitCooldownRef = useRef(0);
 
@@ -298,7 +290,7 @@ export default function VRScene() {
 
   const executeCommand = (command: string) => {
     const now = Date.now();
-    if (now - lastVoiceCommandTimeRef.current < 200) return;
+    if (now - lastVoiceCommandTimeRef.current < 200) return; 
     lastVoiceCommandTimeRef.current = now;
 
     switch (command) {
@@ -325,11 +317,12 @@ export default function VRScene() {
 
   const applyVoiceCommand = (fullTranscript: string) => {
     if (gameStatusRef.current !== "Jugando") return;
-
+    
     const normalized = normalizeSpeech(fullTranscript);
 
+    // Si el motor limpia el historial interno, reiniciamos nuestro cursor
     if (normalized.length < lastProcessedCharIndexRef.current) {
-      lastProcessedCharIndexRef.current = 0;
+        lastProcessedCharIndexRef.current = 0;
     }
 
     let searchIndex = lastProcessedCharIndexRef.current;
@@ -339,6 +332,7 @@ export default function VRScene() {
       let earliestCmd = null;
       let earliestIdx = Infinity;
 
+      // Buscamos prefijos para reaccionar antes de que termines la palabra
       const targets = [
         { key: "izquierd", val: "izquierda" },
         { key: "derech", val: "derecha" },
@@ -389,25 +383,25 @@ export default function VRScene() {
     aliveSecondsRef.current = 0;
     spawnTimerMsRef.current = 0;
     starSpawnTimerMsRef.current = 0;
-    pyramidSpawnTimerMsRef.current = 0;
+    pyramidSpawnTimerMsRef.current = 0; 
     lastFrameMsRef.current = null;
     hitCooldownRef.current = 0;
     jumpTimeRemainingRef.current = 0;
     shootCooldownRef.current = 0;
     lastVoiceCommandTimeRef.current = 0;
-
+    
     lastProcessedCharIndexRef.current = 0;
 
     obstaclesRef.current = [];
     starsRef.current = [];
-    pyramidsRef.current = [];
+    pyramidsRef.current = []; 
     projectilesRef.current = [];
-
+    
     setObstaclesVersion(v => v + 1);
     setStarsVersion(v => v + 1);
     setPyramidsVersion(v => v + 1);
     setProjectilesVersion(v => v + 1);
-
+    
     obstacleElsRef.current.clear();
     starElsRef.current.clear();
     pyramidElsRef.current.clear();
@@ -503,7 +497,7 @@ export default function VRScene() {
       recognition.onend = () => {
         if (!micActiveRef.current) return;
         try {
-          lastProcessedCharIndexRef.current = 0;
+          lastProcessedCharIndexRef.current = 0; 
           recognition.start();
           micRetryAttemptRef.current = 0;
         } catch {
@@ -558,7 +552,6 @@ export default function VRScene() {
     }
   };
 
-  // Bucle principal
   useEffect(() => {
     if (!aframeLoaded) return;
 
@@ -599,7 +592,6 @@ export default function VRScene() {
         }
       }
 
-      // Spawn de obstáculos
       spawnTimerMsRef.current += dt * 1000;
       if (spawnTimerMsRef.current >= SPAWN_EVERY_MS) {
         spawnTimerMsRef.current = 0;
@@ -608,22 +600,10 @@ export default function VRScene() {
         const shapes: ("box" | "sphere" | "cylinder")[] = ["box", "sphere", "cylinder"];
         const shape = shapes[Math.floor(Math.random() * shapes.length)];
         const id = `${nowMs.toFixed(0)}-${Math.random().toString(16).slice(2)}`;
-
-        // 🔥 NUEVO: inicializar los atributos para cambio de carril
-        obstaclesRef.current.push({
-          id,
-          laneX,
-          targetLaneX: laneX,
-          changeCooldown: OBSTACLE_LANE_CHANGE_COOLDOWN_MIN +
-            Math.random() * (OBSTACLE_LANE_CHANGE_COOLDOWN_MAX - OBSTACLE_LANE_CHANGE_COOLDOWN_MIN),
-          size,
-          z: OBSTACLE_SPAWN_Z,
-          shape,
-        });
+        obstaclesRef.current.push({ id, laneX, size, z: OBSTACLE_SPAWN_Z, shape });
         setObstaclesVersion(v => v + 1);
       }
 
-      // Spawn de estrellas (sin cambios)
       starSpawnTimerMsRef.current += dt * 1000;
       if (starSpawnTimerMsRef.current >= 2600) {
         starSpawnTimerMsRef.current = 0;
@@ -635,11 +615,10 @@ export default function VRScene() {
         }
       }
 
-      // Spawn de pirámides (sin cambios)
       pyramidSpawnTimerMsRef.current += dt * 1000;
       if (pyramidSpawnTimerMsRef.current >= 4500) {
         pyramidSpawnTimerMsRef.current = 0;
-        if (Math.random() < 0.7) {
+        if (Math.random() < 0.7) { 
           const laneX = LANES[Math.floor(Math.random() * LANES.length)];
           const id = `p-${nowMs.toFixed(0)}-${Math.random().toString(16).slice(2)}`;
           pyramidsRef.current.push({ id, laneX, size: PYRAMID_SIZE, z: PYRAMID_SPAWN_Z });
@@ -647,7 +626,6 @@ export default function VRScene() {
         }
       }
 
-      // Movimiento suave del jugador
       const playerEl = playerElRef.current;
       if (playerEl?.object3D) {
         const target = Math.min(laneBounds.maxX, Math.max(laneBounds.minX, playerTargetXRef.current));
@@ -667,7 +645,6 @@ export default function VRScene() {
       let starCollected = false;
       let pyramidCollected = false;
 
-      // Actualización de proyectiles y destrucción de obstáculos
       const newProjectiles: Projectile[] = [];
       const destroyedObstacleIds = new Set<string>();
 
@@ -703,52 +680,16 @@ export default function VRScene() {
         setProjectilesVersion(v => v + 1);
       }
 
-      // 🔥 ACTUALIZACIÓN DE OBSTÁCULOS CON MOVIMIENTO LATERAL
       const newObstacles: Obstacle[] = [];
       for (const o of obstaclesRef.current) {
-        // 1. Avanzar en Z
         const newZ = o.z + speed * dt;
-
-        // 2. Gestionar cooldown de cambio de carril
-        let newChangeCooldown = o.changeCooldown - dt;
-        let newTargetLaneX = o.targetLaneX;
-
-        if (newChangeCooldown <= 0) {
-          // Probabilidad de cambiar de carril
-          if (Math.random() < OBSTACLE_LANE_CHANGE_PROB) {
-            // Escoger un carril diferente al actual
-            const currentIdx = LANES.indexOf(o.targetLaneX);
-            let newIdx = currentIdx;
-            while (newIdx === currentIdx) {
-              newIdx = Math.floor(Math.random() * LANES.length);
-            }
-            newTargetLaneX = LANES[newIdx];
-          }
-          // Reiniciar cooldown (aunque no haya cambiado, se reinicia para evitar cambios constantes)
-          newChangeCooldown = OBSTACLE_LANE_CHANGE_COOLDOWN_MIN +
-            Math.random() * (OBSTACLE_LANE_CHANGE_COOLDOWN_MAX - OBSTACLE_LANE_CHANGE_COOLDOWN_MIN);
-        }
-
-        // 3. Interpolar posición X hacia el target
-        let newLaneX = o.laneX;
-        if (Math.abs(newTargetLaneX - o.laneX) > 0.001) {
-          newLaneX += (newTargetLaneX - o.laneX) * Math.min(1, OBSTACLE_LANE_LERP_SPEED * dt);
-        } else {
-          newLaneX = newTargetLaneX;
-        }
-
-        // 4. Actualizar el elemento visual si existe
         const el = obstacleElsRef.current.get(o.id) as AFrameEntity | undefined;
-        if (el?.object3D) {
-          el.object3D.position.z = newZ;
-          el.object3D.position.x = newLaneX;
-        }
+        if (el?.object3D) el.object3D.position.z = newZ;
 
-        // 5. Colisión con el jugador
         if (newZ <= OBSTACLE_DESPAWN_Z) {
           const half = o.size / 2;
           const dz = Math.abs(newZ - PLAYER_Z);
-          const dx = Math.abs(newLaneX - playerX);
+          const dx = Math.abs(o.laneX - playerX);
           const dy = Math.abs(OBSTACLE_Y - (PLAYER_Y_BASE + jumpOffsetY));
           const radiusSum = playerHalf + half;
           const colliding = (dx <= radiusSum && dz <= radiusSum && dy <= radiusSum);
@@ -756,28 +697,12 @@ export default function VRScene() {
           if (colliding && !hitOccurred && hitCooldownRef.current <= 0) {
             hitOccurred = true;
           } else {
-            newObstacles.push({
-              ...o,
-              laneX: newLaneX,
-              targetLaneX: newTargetLaneX,
-              changeCooldown: newChangeCooldown,
-              z: newZ,
-            });
+            newObstacles.push({ ...o, z: newZ });
           }
-        } else {
-          // Si el obstáculo todavía no ha pasado al jugador, se mantiene
-          newObstacles.push({
-            ...o,
-            laneX: newLaneX,
-            targetLaneX: newTargetLaneX,
-            changeCooldown: newChangeCooldown,
-            z: newZ,
-          });
         }
       }
       obstaclesRef.current = newObstacles;
 
-      // Actualización de estrellas (sin cambios)
       const newStars: Star[] = [];
       for (const s of starsRef.current) {
         const newZ = s.z + speed * dt;
@@ -801,7 +726,6 @@ export default function VRScene() {
       }
       starsRef.current = newStars;
 
-      // Actualización de pirámides (sin cambios)
       const newPyramids: Pyramid[] = [];
       for (const p of pyramidsRef.current) {
         const newZ = p.z + speed * dt;
@@ -825,7 +749,6 @@ export default function VRScene() {
       }
       pyramidsRef.current = newPyramids;
 
-      // Aplicar efectos de colisión
       if (hitCooldownRef.current <= 0) {
         if (hitOccurred) {
           hitCooldownRef.current = HIT_COOLDOWN_SEC;
@@ -853,7 +776,6 @@ export default function VRScene() {
         }
       }
 
-      // Forzar actualizaciones de versión para renderizado
       if (obstaclesRef.current.length !== obstaclesVersionRef.current) {
         setObstaclesVersion(v => v + 1);
       }
@@ -874,7 +796,6 @@ export default function VRScene() {
     };
   }, [aframeLoaded, gameStatus, micEnabled, laneBounds.maxX, laneBounds.minX]);
 
-  // Tecla W para disparar
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'w' || e.key === 'W') {
@@ -886,7 +807,6 @@ export default function VRScene() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Cleanup al desmontar
   useEffect(() => {
     return () => {
       micActiveRef.current = false;
@@ -1014,7 +934,7 @@ export default function VRScene() {
                 animation="property: rotation; to: 0 360 0; loop: true; dur: 1000; easing: linear"
               ></a-entity>
             ))}
-
+            
             {pyramidsToRender.map(p => (
               <a-entity
                 key={p.id}
@@ -1174,9 +1094,9 @@ export default function VRScene() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                zIndex: 9999,
+                zIndex: 9999, 
                 animation: "fadeIn 0.3s ease-out",
-                fontFamily: "'Courier New', Courier, monospace",
+                fontFamily: "'Courier New', Courier, monospace", 
               }}
             >
               <div
@@ -1185,7 +1105,7 @@ export default function VRScene() {
                   padding: "50px 70px",
                   textAlign: "center",
                   border: "6px solid #ff3366",
-                  boxShadow: "10px 10px 0px rgba(255, 51, 102, 0.4)",
+                  boxShadow: "10px 10px 0px rgba(255, 51, 102, 0.4)", 
                 }}
               >
                 <h1
@@ -1201,7 +1121,7 @@ export default function VRScene() {
                 >
                   Game Over
                 </h1>
-
+                
                 <div style={{ marginBottom: "30px" }}>
                   <p style={{ fontSize: "1.5rem", color: "#ccc", margin: "0 0 10px 0" }}>
                     Tu aventura terminó.
