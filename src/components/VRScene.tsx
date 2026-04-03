@@ -46,7 +46,7 @@ declare global {
 type Obstacle = {
   id: string;
   laneX: number;          // posición actual en X (interpolada)
-  targetLaneX: number;    // carril objetivo hacia el que se mueve
+  targetLaneX: LaneX;     // carril objetivo hacia el que se mueve
   changeCooldown: number; // tiempo restante hasta el próximo cambio de carril
   size: number;
   z: number;
@@ -76,6 +76,7 @@ type Projectile = {
 };
 
 const LANES = [-2.4, 0, 2.4] as const;
+type LaneX = (typeof LANES)[number];
 
 const PLAYER_Y_BASE = 1.0;
 const PLAYER_Z = -6.0;
